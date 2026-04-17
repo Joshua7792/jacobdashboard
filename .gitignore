@@ -2,6 +2,8 @@
 __pycache__/
 *.pyc
 backend/data/
+build/
+dist/
 frontend/dist/
 frontend/node_modules/
 .codex
