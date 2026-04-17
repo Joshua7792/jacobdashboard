@@ -9,16 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import certifications, companies, contractors, dashboard, exports, lookups, reports, training, workers
+from .api import companies, contractors, dashboard, exports, lookups, reports, training, workers
 from .database import BASE_DIR, Base, UPLOAD_DIR, engine, ensure_schema, session_scope
-from .seed import (
-    ensure_jacobs_demo_dataset,
-    normalize_demo_worker_contractors,
-    normalize_demo_companies,
-    normalize_demo_contractors,
-    remove_duplicate_demo_workers,
-    seed_demo_data,
-)
+from .seed import ensure_default_contractors, ensure_project_company, ensure_training_catalog, migrate_legacy_training_data
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     FRONTEND_DIST = Path(sys._MEIPASS) / "frontend" / "dist"
@@ -28,19 +21,17 @@ else:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    ensure_schema()
     Base.metadata.create_all(bind=engine)
+    ensure_schema()
     with session_scope() as session:
-        seed_demo_data(session)
-        normalize_demo_companies(session)
-        ensure_jacobs_demo_dataset(session)
-        remove_duplicate_demo_workers(session)
-        normalize_demo_contractors(session)
-        normalize_demo_worker_contractors(session)
+        project = ensure_project_company(session)
+        ensure_default_contractors(session, project.id)
+        ensure_training_catalog(session)
+        migrate_legacy_training_data(session)
     yield
 
 
-app = FastAPI(title="Jacob Workforce Dashboard", lifespan=lifespan)
+app = FastAPI(title="Cordillera Workforce Dashboard", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,12 +44,11 @@ app.add_middleware(
 app.include_router(companies.router, prefix="/api")
 app.include_router(contractors.router, prefix="/api")
 app.include_router(workers.router, prefix="/api")
-app.include_router(certifications.router, prefix="/api")
+app.include_router(training.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(exports.router, prefix="/api")
 app.include_router(lookups.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
-app.include_router(training.router, prefix="/api")
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
@@ -70,7 +60,7 @@ def health():
 
 @app.get("/api")
 def api_root():
-    return {"message": "Jacob Workforce Dashboard API"}
+    return {"message": "Cordillera Workforce Dashboard API"}
 
 
 if FRONTEND_DIST.exists():

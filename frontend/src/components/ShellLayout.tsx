@@ -1,4 +1,12 @@
-import { BarChart3, BriefcaseBusiness, Building2, FileStack, LayoutDashboard, ShieldCheck, Users } from 'lucide-react'
+import {
+  BarChart3,
+  BriefcaseBusiness,
+  DollarSign,
+  FileStack,
+  LayoutDashboard,
+  ShieldCheck,
+  Users,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 
@@ -13,11 +21,11 @@ type ShellLayoutProps = {
 
 const navigation = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/companies', label: 'Companies', icon: Building2 },
+  { to: '/finance', label: 'Finance', icon: DollarSign },
   { to: '/contractors', label: 'Contractors', icon: BriefcaseBusiness },
-  { to: '/employees', label: 'Employees', icon: Users },
+  { to: '/employees', label: 'Workforce', icon: Users },
   { to: '/training', label: 'Training Hub', icon: FileStack },
-  { to: '/certifications', label: 'Certifications', icon: ShieldCheck },
+  { to: '/certifications', label: 'Evidence', icon: ShieldCheck },
   { to: '/reports', label: 'Report Studio', icon: BarChart3 },
 ]
 
@@ -27,14 +35,16 @@ export function ShellLayout({
   selectedCompanyId,
   onSelectCompany,
 }: ShellLayoutProps) {
+  const singleCompany = companies.length === 1 ? companies[0] : null
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-panel">
-          <div className="brand-mark">JW</div>
+          <div className="brand-mark">CO</div>
           <div>
-            <p className="eyebrow">Local workforce system</p>
-            <h1>Jacob Dashboard</h1>
+            <p className="eyebrow">Cordillera local workforce system</p>
+            <h1>Cordillera Control</h1>
           </div>
         </div>
 
@@ -54,8 +64,9 @@ export function ShellLayout({
         <div className="sidebar-note surface">
           <p className="eyebrow">What this app does well</p>
           <p>
-            Keeps each company separate, divides contractors with their own employees, and turns
-            raw project records and source evidence into usable charts without needing Excel.
+            Keeps the Cordillera project organized, divides contractors with their own workers,
+            tracks contractor budget use against the project cap, and turns raw project records
+            and source evidence into usable charts without needing Excel.
           </p>
         </div>
       </aside>
@@ -63,28 +74,35 @@ export function ShellLayout({
       <main className="main-stage">
         <header className="topbar surface">
           <div>
-            <p className="eyebrow">Office control center</p>
-            <h2>Track companies, contractors, employees, training evidence, and certifications</h2>
+            <p className="eyebrow">Project control center</p>
+            <h2>Track contractors, workforce readiness, training evidence, and certifications</h2>
           </div>
 
-          <div className="topbar-actions">
-            <label className="field">
-              <span>Company scope</span>
-              <select
-                value={selectedCompanyId ?? ''}
-                onChange={(event) =>
-                  onSelectCompany(event.target.value ? Number(event.target.value) : null)
-                }
-              >
-                <option value="">All companies</option>
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          {singleCompany ? (
+            <div className="topbar-fixed-scope">
+              <span className="scope-label">Project</span>
+              <strong>{singleCompany.name}</strong>
+            </div>
+          ) : (
+            <div className="topbar-actions">
+              <label className="field">
+                <span>Project scope</span>
+                <select
+                  value={selectedCompanyId ?? ''}
+                  onChange={(event) =>
+                    onSelectCompany(event.target.value ? Number(event.target.value) : null)
+                  }
+                >
+                  <option value="">All projects</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
         </header>
 
         <div className="page-content">{children}</div>

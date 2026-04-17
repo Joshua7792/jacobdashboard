@@ -4,58 +4,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from ..models import Company, Contractor, Worker
-from ..schemas import CertificationRead, WorkerCreate, WorkerRead, WorkerUpdate
-from ..services.analytics import certification_status, worker_certification_status
+from ..models import Company, Contractor, TrainingCatalog, Worker, WorkerTraining
+from ..schemas import WorkerCreate, WorkerRead, WorkerUpdate
 from .deps import get_db
+from .serializers import to_worker_read
 
 router = APIRouter(prefix="/workers", tags=["workers"])
 
 
-def to_certification_read(certification):
-    worker = getattr(certification, "worker", None)
-    contractor_name = worker.contractor.name if worker and worker.contractor else certification.contractor
-    return CertificationRead(
-        id=certification.id,
-        worker_id=certification.worker_id,
-        title=certification.title,
-        contractor=contractor_name,
-        issue_date=certification.issue_date,
-        expiration_date=certification.expiration_date,
-        file_name=certification.file_name,
-        file_path=certification.file_path,
-        file_type=certification.file_type,
-        notes=certification.notes,
-        created_at=certification.created_at,
-        status=certification_status(certification),
-        file_url=f"/uploads/{certification.file_path}" if certification.file_path and not certification.file_path.startswith("demo/") else None,
-        worker_name=worker.full_name if worker else None,
-        company_name=worker.company.name if worker else None,
-        contractor_name=contractor_name,
-    )
-
-
-def to_worker_read(worker: Worker) -> WorkerRead:
-    certifications = [to_certification_read(certification) for certification in worker.certifications]
-    return WorkerRead(
-        id=worker.id,
-        company_id=worker.company_id,
-        contractor_id=worker.contractor_id,
-        full_name=worker.full_name,
-        employee_code=worker.employee_code,
-        job_title=worker.job_title,
-        onboarding_status=worker.onboarding_status,
-        hire_date=worker.hire_date,
-        email=worker.email,
-        phone=worker.phone,
-        notes=worker.notes,
-        created_at=worker.created_at,
-        updated_at=worker.updated_at,
-        company_name=worker.company.name,
-        contractor_name=worker.contractor.name if worker.contractor else None,
-        certification_count=len(certifications),
-        certification_status=worker_certification_status(worker),
-        certifications=certifications,
+def worker_query():
+    return select(Worker).options(
+        selectinload(Worker.company),
+        selectinload(Worker.contractor),
+        selectinload(Worker.trainings).selectinload(WorkerTraining.catalog_item),
+        selectinload(Worker.trainings).selectinload(WorkerTraining.source_document),
     )
 
 
@@ -64,15 +26,12 @@ def list_workers(
     company_id: int | None = Query(default=None),
     search: str | None = Query(default=None),
     onboarding_status: str | None = Query(default=None),
+    compliance_status: str | None = Query(default=None),
     cert_status: str | None = Query(default=None),
     contractor_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> list[WorkerRead]:
-    query = select(Worker).options(
-        selectinload(Worker.company),
-        selectinload(Worker.contractor),
-        selectinload(Worker.certifications),
-    )
+    query = worker_query()
 
     if company_id:
         query = query.where(Worker.company_id == company_id)
@@ -92,9 +51,11 @@ def list_workers(
         )
 
     workers = db.scalars(query.order_by(Worker.full_name)).all()
-    mapped_workers = [to_worker_read(worker) for worker in workers]
-    if cert_status:
-        mapped_workers = [worker for worker in mapped_workers if worker.certification_status == cert_status]
+    catalog_items = db.scalars(select(TrainingCatalog).order_by(TrainingCatalog.display_order)).all()
+    mapped_workers = [to_worker_read(worker, catalog_items) for worker in workers]
+    status_filter = compliance_status or cert_status
+    if status_filter:
+        mapped_workers = [worker for worker in mapped_workers if worker.compliance_status == status_filter]
     return mapped_workers
 
 
@@ -102,53 +63,42 @@ def list_workers(
 def create_worker(payload: WorkerCreate, db: Session = Depends(get_db)) -> WorkerRead:
     company = db.get(Company, payload.company_id)
     if company is None:
-        raise HTTPException(status_code=404, detail="Company not found")
+        raise HTTPException(status_code=404, detail="Project not found")
 
-    contractor = None
     if payload.contractor_id is not None:
         contractor = db.get(Contractor, payload.contractor_id)
         if contractor is None or contractor.company_id != payload.company_id:
-            raise HTTPException(status_code=404, detail="Contractor not found for company")
+            raise HTTPException(status_code=404, detail="Contractor not found for project")
 
     worker = Worker(**payload.model_dump())
     db.add(worker)
     db.commit()
-    worker = db.scalar(
-        select(Worker)
-        .where(Worker.id == worker.id)
-        .options(selectinload(Worker.company), selectinload(Worker.contractor), selectinload(Worker.certifications))
-    )
-    return to_worker_read(worker)
+    worker = db.scalar(worker_query().where(Worker.id == worker.id))
+    catalog_items = db.scalars(select(TrainingCatalog).order_by(TrainingCatalog.display_order)).all()
+    return to_worker_read(worker, catalog_items)
 
 
 @router.put("/{worker_id}", response_model=WorkerRead)
 def update_worker(worker_id: int, payload: WorkerUpdate, db: Session = Depends(get_db)) -> WorkerRead:
-    worker = db.scalar(
-        select(Worker)
-        .where(Worker.id == worker_id)
-        .options(selectinload(Worker.company), selectinload(Worker.certifications))
-    )
+    worker = db.scalar(worker_query().where(Worker.id == worker_id))
     if worker is None:
         raise HTTPException(status_code=404, detail="Worker not found")
 
     company = db.get(Company, payload.company_id)
     if company is None:
-        raise HTTPException(status_code=404, detail="Company not found")
+        raise HTTPException(status_code=404, detail="Project not found")
     if payload.contractor_id is not None:
         contractor = db.get(Contractor, payload.contractor_id)
         if contractor is None or contractor.company_id != payload.company_id:
-            raise HTTPException(status_code=404, detail="Contractor not found for company")
+            raise HTTPException(status_code=404, detail="Contractor not found for project")
 
     for field, value in payload.model_dump().items():
         setattr(worker, field, value)
 
     db.commit()
-    worker = db.scalar(
-        select(Worker)
-        .where(Worker.id == worker_id)
-        .options(selectinload(Worker.company), selectinload(Worker.contractor), selectinload(Worker.certifications))
-    )
-    return to_worker_read(worker)
+    worker = db.scalar(worker_query().where(Worker.id == worker_id))
+    catalog_items = db.scalars(select(TrainingCatalog).order_by(TrainingCatalog.display_order)).all()
+    return to_worker_read(worker, catalog_items)
 
 
 @router.delete("/{worker_id}")

@@ -8,8 +8,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ..models import Certification, Worker
-from ..services.analytics import certification_status, worker_certification_status
+from ..models import TrainingCatalog, Worker, WorkerTraining
+from ..services.analytics import training_status, worker_compliance_counts
 from .deps import get_db
 
 router = APIRouter(prefix="/exports", tags=["exports"])
@@ -23,18 +23,19 @@ def export_workers_csv(
     query = select(Worker).options(
         selectinload(Worker.company),
         selectinload(Worker.contractor),
-        selectinload(Worker.certifications),
+        selectinload(Worker.trainings),
     )
     if company_id:
         query = query.where(Worker.company_id == company_id)
     workers = db.scalars(query.order_by(Worker.full_name)).all()
+    catalog_items = db.scalars(select(TrainingCatalog).order_by(TrainingCatalog.display_order)).all()
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(
         [
-            "employee_id",
-            "company",
+            "worker_id",
+            "project",
             "contractor",
             "full_name",
             "employee_code",
@@ -43,12 +44,15 @@ def export_workers_csv(
             "hire_date",
             "email",
             "phone",
-            "certification_status",
-            "certification_count",
+            "compliance_status",
+            "trainings_completed",
+            "trainings_required",
+            "compliance_pct",
             "notes",
         ]
     )
     for worker in workers:
+        counts = worker_compliance_counts(worker, len(catalog_items))
         writer.writerow(
             [
                 worker.id,
@@ -61,8 +65,10 @@ def export_workers_csv(
                 worker.hire_date.isoformat() if worker.hire_date else "",
                 worker.email or "",
                 worker.phone or "",
-                worker_certification_status(worker),
-                len(worker.certifications),
+                counts["status"],
+                counts["completed"],
+                counts["required"],
+                counts["compliance_pct"],
                 worker.notes or "",
             ]
         )
@@ -70,61 +76,65 @@ def export_workers_csv(
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=employees-export.csv"},
+        headers={"Content-Disposition": "attachment; filename=cordillera-workers.csv"},
     )
 
 
-@router.get("/certifications.csv")
-def export_certifications_csv(
+@router.get("/trainings.csv")
+def export_trainings_csv(
     company_id: int | None = Query(default=None),
     status_filter: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    query = select(Certification).join(Certification.worker).options(
-        selectinload(Certification.worker).selectinload(Worker.company),
-        selectinload(Certification.worker).selectinload(Worker.contractor),
+    query = select(WorkerTraining).options(
+        selectinload(WorkerTraining.worker).selectinload(Worker.company),
+        selectinload(WorkerTraining.worker).selectinload(Worker.contractor),
+        selectinload(WorkerTraining.catalog_item),
+        selectinload(WorkerTraining.source_document),
     )
     if company_id:
-        query = query.where(Worker.company_id == company_id)
-    certifications = db.scalars(query.order_by(Certification.expiration_date)).all()
+        query = query.where(WorkerTraining.worker.has(company_id=company_id))
+    trainings = db.scalars(query.order_by(WorkerTraining.completed_on, WorkerTraining.id)).all()
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(
         [
-            "certification_id",
-            "company",
-            "employee",
-            "title",
+            "training_id",
+            "project",
+            "worker",
             "contractor",
-            "issue_date",
-            "expiration_date",
+            "training_name",
+            "category",
+            "completed_on",
             "status",
-            "file_name",
+            "source_document",
+            "evidence_file",
             "notes",
         ]
     )
-    for certification in certifications:
-        status_value = certification_status(certification)
+    for training in trainings:
+        status_value = training_status(training)
         if status_filter and status_value != status_filter:
             continue
         writer.writerow(
             [
-                certification.id,
-                certification.worker.company.name,
-                certification.worker.full_name,
-                certification.title,
-                certification.worker.contractor.name if certification.worker and certification.worker.contractor else certification.contractor or "",
-                certification.issue_date.isoformat() if certification.issue_date else "",
-                certification.expiration_date.isoformat() if certification.expiration_date else "",
+                training.id,
+                training.worker.company.name,
+                training.worker.full_name,
+                training.worker.contractor.name if training.worker.contractor else "",
+                training.catalog_item.name,
+                training.catalog_item.category,
+                training.completed_on.isoformat() if training.completed_on else "",
                 status_value,
-                certification.file_name or "",
-                certification.notes or "",
+                training.source_document.original_file_name if training.source_document else "",
+                training.evidence_file_name or "",
+                training.notes or "",
             ]
         )
 
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=certifications-export.csv"},
+        headers={"Content-Disposition": "attachment; filename=cordillera-trainings.csv"},
     )

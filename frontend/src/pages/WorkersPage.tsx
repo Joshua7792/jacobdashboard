@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react'
 
 import { api } from '../api'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { summarizeWorkerCompliance, workerCompletionPercentage } from '../lib/compliance'
 import type { Company, Contractor, Worker } from '../types'
 
 type WorkersPageProps = {
@@ -35,12 +36,18 @@ const workerTemplate: WorkerFormState = {
   notes: '',
 }
 
+function complianceBadgeClass(status: string) {
+  if (status === 'complete') return 'badge-valid'
+  if (status === 'partial') return 'badge-expiring'
+  return 'badge-missing'
+}
+
 export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) {
   const [contractors, setContractors] = useState<Contractor[]>([])
   const [workers, setWorkers] = useState<Worker[]>([])
   const [search, setSearch] = useState('')
   const [contractorFilter, setContractorFilter] = useState('')
-  const [certFilter, setCertFilter] = useState('')
+  const [complianceFilter, setComplianceFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [selectedWorkerId, setSelectedWorkerId] = useState<number | null>(null)
   const [form, setForm] = useState<WorkerFormState>({
@@ -64,11 +71,12 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
     if (selectedCompanyId) params.set('company_id', String(selectedCompanyId))
     if (contractorFilter) params.set('contractor_id', contractorFilter)
     if (debouncedSearch) params.set('search', debouncedSearch)
-    if (certFilter) params.set('cert_status', certFilter)
+    if (complianceFilter) params.set('compliance_status', complianceFilter)
     try {
       setLoading(true)
       const data = await api.getWorkers(params)
       setWorkers(data)
+      setSelectedWorkerId((current) => (current && data.some((worker) => worker.id === current) ? current : data[0]?.id ?? null))
     } finally {
       setLoading(false)
     }
@@ -82,9 +90,9 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
 
   useEffect(() => {
     loadWorkers().catch((error) =>
-      setMessage(error instanceof Error ? error.message : 'Unable to load employees'),
+      setMessage(error instanceof Error ? error.message : 'Unable to load workforce'),
     )
-  }, [selectedCompanyId, contractorFilter, debouncedSearch, certFilter])
+  }, [selectedCompanyId, contractorFilter, debouncedSearch, complianceFilter])
 
   useEffect(() => {
     setForm((current) => ({
@@ -92,6 +100,8 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
       company_id: current.company_id || selectedCompanyId || companies[0]?.id || 0,
     }))
   }, [selectedCompanyId, companies])
+
+  const selectedWorker = workers.find((worker) => worker.id === selectedWorkerId) ?? null
 
   function resetForm() {
     setSelectedWorkerId(null)
@@ -136,16 +146,16 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
 
       if (selectedWorkerId) {
         await api.updateWorker(selectedWorkerId, payload)
-        setMessage('Employee updated.')
+        setMessage('Worker updated.')
       } else {
         await api.createWorker(payload)
-        setMessage('Employee added.')
+        setMessage('Worker added.')
         resetForm()
       }
 
       await loadWorkers()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to save employee')
+      setMessage(error instanceof Error ? error.message : 'Unable to save worker')
     } finally {
       setBusy(false)
     }
@@ -153,7 +163,7 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
 
   async function handleDelete() {
     if (!selectedWorkerId) return
-    const confirmed = window.confirm('Delete this employee and all certifications attached to them?')
+    const confirmed = window.confirm('Delete this worker and all linked training records?')
     if (!confirmed) return
 
     try {
@@ -161,22 +171,25 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
       setMessage(null)
       await api.deleteWorker(selectedWorkerId)
       resetForm()
-      setMessage('Employee deleted.')
+      setMessage('Worker deleted.')
       await loadWorkers()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to delete employee')
+      setMessage(error instanceof Error ? error.message : 'Unable to delete worker')
     } finally {
       setBusy(false)
     }
   }
 
+  const selectedSummary = selectedWorker ? summarizeWorkerCompliance(selectedWorker.trainings) : null
+  const completionPercentage = selectedWorker ? workerCompletionPercentage(selectedWorker) : 0
+
   return (
     <section className="page-grid two-column">
-      <article className="surface">
+      <article className="surface panel-stack">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Employee list</p>
-            <h3>Employees</h3>
+            <p className="eyebrow">Project workforce</p>
+            <h3>Workers</h3>
           </div>
         </div>
 
@@ -201,14 +214,12 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
             />
           </label>
           <label className="field">
-            <span>Certification status</span>
-            <select value={certFilter} onChange={(event) => setCertFilter(event.target.value)}>
+            <span>Compliance</span>
+            <select value={complianceFilter} onChange={(event) => setComplianceFilter(event.target.value)}>
               <option value="">All</option>
-              <option value="valid">Valid</option>
-              <option value="expiring">Expiring</option>
-              <option value="expired">Expired</option>
+              <option value="complete">Complete</option>
+              <option value="partial">Partial</option>
               <option value="missing">Missing</option>
-              <option value="stable">No expiration</option>
             </select>
           </label>
         </div>
@@ -217,24 +228,24 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
           <table className="data-table">
             <thead>
               <tr>
-                <th>Employee</th>
+                <th>Worker</th>
                 <th>Contractor</th>
-                <th>Status</th>
-                <th>Certs</th>
+                <th>Compliance</th>
+                <th>Ready</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
                   <td colSpan={4}>
-                    <div className="loading">Loading employees...</div>
+                    <div className="loading">Loading workers...</div>
                   </td>
                 </tr>
               )}
               {!loading && workers.length === 0 && (
                 <tr>
                   <td colSpan={4}>
-                    <div className="empty-copy">No employees match the current filters.</div>
+                    <div className="empty-copy">No workers match the current filters.</div>
                   </td>
                 </tr>
               )}
@@ -246,32 +257,47 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
                   </td>
                   <td>{worker.contractor_name || 'Unassigned'}</td>
                   <td>
-                    <span className={`badge badge-${worker.certification_status}`}>
-                      {worker.certification_status}
+                    <span className={`badge ${complianceBadgeClass(worker.compliance_status)}`}>
+                      {worker.compliance_status}
                     </span>
                   </td>
-                  <td>{worker.certification_count}</td>
+                  <td>{worker.compliance_pct}%</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {selectedWorker && selectedSummary && (
+          <div className="preview-panel">
+            <p className="eyebrow">Selected worker</p>
+            <h3>{selectedWorker.full_name}</h3>
+            <div className="company-metrics">
+              <span>{selectedSummary.activeItems} active records</span>
+              <span>{selectedSummary.inactiveItems} missing records</span>
+              <span>{completionPercentage}% ready</span>
+            </div>
+            <p className="muted-copy">
+              Use Training Hub to update the worker’s required training dates one item at a time.
+            </p>
+          </div>
+        )}
       </article>
 
-      <article className="surface">
+      <article className="surface panel-stack">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">{selectedWorkerId ? 'Edit employee' : 'Add employee'}</p>
-            <h3>{selectedWorkerId ? 'Employee profile' : 'New employee profile'}</h3>
+            <p className="eyebrow">{selectedWorkerId ? 'Edit worker' : 'Add worker'}</p>
+            <h3>{selectedWorkerId ? 'Worker profile' : 'New worker profile'}</h3>
           </div>
-          <button className="ghost-button" onClick={resetForm}>
+          <button className="ghost-button" onClick={resetForm} type="button">
             Clear
           </button>
         </div>
 
         <form className="form-grid" onSubmit={handleSubmit}>
           <label className="field">
-            <span>Company</span>
+            <span>Project</span>
             <select
               required
               value={form.company_id}
@@ -310,7 +336,7 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
           </label>
 
           <label className="field">
-            <span>Employee name</span>
+            <span>Worker name</span>
             <input
               required
               value={form.full_name}
@@ -341,16 +367,15 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
           </label>
 
           <label className="field">
-            <span>Onboarding status</span>
+            <span>Worker status</span>
             <select
               value={form.onboarding_status}
               onChange={(event) =>
                 setForm((current) => ({ ...current, onboarding_status: event.target.value }))
               }
             >
-              <option value="new">New</option>
               <option value="active">Active</option>
-              <option value="paused">Paused</option>
+              <option value="new">New</option>
               <option value="inactive">Inactive</option>
             </select>
           </label>
@@ -395,11 +420,11 @@ export function WorkersPage({ companies, selectedCompanyId }: WorkersPageProps) 
 
           <div className="action-row field-full">
             <button className="primary-button" disabled={busy} type="submit">
-              {busy ? 'Saving...' : selectedWorkerId ? 'Save employee' : 'Add employee'}
+              {busy ? 'Saving...' : selectedWorkerId ? 'Save worker' : 'Add worker'}
             </button>
             {selectedWorkerId && (
               <button className="danger-button" disabled={busy} type="button" onClick={handleDelete}>
-                Delete employee
+                Delete worker
               </button>
             )}
           </div>

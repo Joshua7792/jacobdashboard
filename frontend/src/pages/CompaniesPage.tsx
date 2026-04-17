@@ -12,6 +12,7 @@ const emptyForm = {
   name: '',
   industry: '',
   primary_contact: '',
+  budget_cap: '200000000',
   notes: '',
 }
 
@@ -45,6 +46,7 @@ export function CompaniesPage({ companies, onRefresh }: CompaniesPageProps) {
       name: company.name,
       industry: company.industry ?? '',
       primary_contact: company.primary_contact ?? '',
+      budget_cap: String(company.budget_cap ?? 200000000),
       notes: company.notes ?? '',
     })
   }
@@ -56,6 +58,7 @@ export function CompaniesPage({ companies, onRefresh }: CompaniesPageProps) {
       setMessage(null)
       const payload = {
         ...form,
+        budget_cap: Number(form.budget_cap || 0),
         industry: form.industry || null,
         primary_contact: form.primary_contact || null,
         notes: form.notes || null,
@@ -119,8 +122,8 @@ export function CompaniesPage({ companies, onRefresh }: CompaniesPageProps) {
               <div className="company-metrics">
                 <span>{company.contractor_count} contractors</span>
                 <span>{company.worker_count} employees</span>
-                <span>{company.certification_count} certs</span>
-                <span>{company.expiring_certifications} expiring</span>
+                <span>{company.training_count} required items</span>
+                <span>{company.trainings_completed} completed</span>
               </div>
             </button>
           ))}
@@ -165,6 +168,19 @@ export function CompaniesPage({ companies, onRefresh }: CompaniesPageProps) {
                 setForm((current) => ({ ...current, primary_contact: event.target.value }))
               }
               placeholder="Main contractor contact"
+            />
+          </label>
+
+          <label className="field">
+            <span>Budget cap</span>
+            <input
+              min="0"
+              step="1000"
+              type="number"
+              value={form.budget_cap}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, budget_cap: event.target.value }))
+              }
             />
           </label>
 

@@ -41,13 +41,13 @@ def main() -> None:
         raise SystemExit("pywebview is not installed. Run `pip install -r backend/requirements.txt`.") from exc
 
     port = reserve_port()
-    os.environ["JACOB_DASHBOARD_PORT"] = str(port)
+    os.environ["CORDILLERA_DASHBOARD_PORT"] = str(port)
     api_thread = threading.Thread(target=run_api, args=(port,), daemon=True)
     api_thread.start()
     wait_for_api(port)
 
     webview.create_window(
-        "Jacob Workforce Dashboard",
+        "Cordillera Workforce Dashboard",
         f"http://127.0.0.1:{port}",
         min_size=(1200, 780),
         text_select=True,

@@ -18,28 +18,29 @@ type ReportsPageProps = {
 
 const groupOptions: Record<string, { value: string; label: string }[]> = {
   workers: [
-    { value: 'company', label: 'Company' },
+    { value: 'project', label: 'Project' },
     { value: 'contractor', label: 'Contractor' },
-    { value: 'status', label: 'Onboarding status' },
+    { value: 'status', label: 'Worker status' },
     { value: 'month', label: 'Hire month' },
-    { value: 'certification_status', label: 'Certification status' },
+    { value: 'compliance', label: 'Compliance status' },
   ],
-  certifications: [
+  trainings: [
     { value: 'contractor', label: 'Contractor' },
-    { value: 'status', label: 'Certification status' },
-    { value: 'month', label: 'Expiration month' },
+    { value: 'status', label: 'Training status' },
+    { value: 'category', label: 'Category' },
+    { value: 'training', label: 'Training name' },
   ],
 }
 
 export function ReportsPage({ selectedCompanyId }: ReportsPageProps) {
-  const [dataset, setDataset] = useState<'workers' | 'certifications'>('workers')
-  const [groupBy, setGroupBy] = useState('company')
+  const [dataset, setDataset] = useState<'workers' | 'trainings'>('workers')
+  const [groupBy, setGroupBy] = useState('project')
   const [report, setReport] = useState<ReportPreview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const nextGroup = groupOptions[dataset][0]?.value ?? 'company'
+    const nextGroup = groupOptions[dataset][0]?.value ?? 'project'
     setGroupBy(nextGroup)
   }, [dataset])
 
@@ -66,7 +67,7 @@ export function ReportsPage({ selectedCompanyId }: ReportsPageProps) {
 
   return (
     <section className="page-grid">
-      <article className="surface">
+      <article className="surface panel-stack">
         <div className="section-heading">
           <div>
             <p className="eyebrow">Draft builder</p>
@@ -79,10 +80,10 @@ export function ReportsPage({ selectedCompanyId }: ReportsPageProps) {
             <span>Dataset</span>
             <select
               value={dataset}
-              onChange={(event) => setDataset(event.target.value as 'workers' | 'certifications')}
+              onChange={(event) => setDataset(event.target.value as 'workers' | 'trainings')}
             >
-              <option value="workers">Employees</option>
-              <option value="certifications">Certifications</option>
+              <option value="workers">Workers</option>
+              <option value="trainings">Trainings</option>
             </select>
           </label>
           <label className="field">

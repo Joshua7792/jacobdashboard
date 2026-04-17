@@ -54,8 +54,10 @@ class ParsedContractorMatrix:
     contractor_name: str
     completed_on: date | None
     analysis_source: str
+    language: str
     training_records: list[MatrixEntry]
     certifications: list[MatrixEntry]
+    unknown_columns: list[str]
 
 
 def normalize_name(value: str) -> str:
@@ -101,28 +103,55 @@ def extract_pages(file_bytes: bytes, filename: str) -> tuple[list[str], str]:
         temp_path.unlink(missing_ok=True)
 
 
+def detect_language(page_text: str) -> str:
+    lowered = page_text.lower()
+    if "nombre del empleado" in lowered or "fecha de completado" in lowered:
+        return "es"
+    if "employee name" in lowered or "date completed" in lowered:
+        return "en"
+    return "mixed"
+
+
 def parse_contractor(page_text: str) -> str:
-    match = re.search(r"Nombre de la compañía contratista:\s*(.+?)\s+\*?\s*Fecha de completado", page_text)
-    if not match:
-        raise ValueError("Could not detect contractor name in the document")
-    return contractor_alias(match.group(1).strip())
+    patterns = [
+        r"Nombre de la compañía contratista:\s*(.+?)\s+\*?\s*Fecha de completado",
+        r"Contractor company name:\s*(.+?)\s+\*?\s*Date completed",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, page_text, flags=re.IGNORECASE)
+        if match:
+            return contractor_alias(match.group(1).strip())
+    raise ValueError("Could not detect contractor name in the document")
 
 
 def parse_completed_on(page_text: str) -> date | None:
-    match = re.search(r"Fecha de completado.*?:\s*(\d{1,2}/\d{1,2}/\d{4})", page_text)
-    if not match:
-        return None
-    return parse_mmddyyyy(match.group(1))
+    patterns = [
+        r"Fecha de completado.*?:\s*(\d{1,2}/\d{1,2}/\d{4})",
+        r"Date completed.*?:\s*(\d{1,2}/\d{1,2}/\d{4})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, page_text, flags=re.IGNORECASE)
+        if match:
+            return parse_mmddyyyy(match.group(1))
+    return None
 
 
-def strip_table_section(page_text: str, start_marker: str) -> list[str]:
-    start_index = page_text.find(start_marker)
-    if start_index == -1:
+def strip_table_section(page_text: str) -> list[str]:
+    markers = ["Nombre del Empleado", "Employee Name"]
+    section = ""
+    for marker in markers:
+        start_index = page_text.find(marker)
+        if start_index != -1:
+            section = page_text[start_index:]
+            break
+    if not section:
         return []
-    section = page_text[start_index:]
-    end_marker = "Por este medio certifico"
-    if end_marker in section:
-        section = section.split(end_marker, 1)[0]
+
+    for end_marker in ("Por este medio certifico", "I hereby certify"):
+        if end_marker in section:
+            section = section.split(end_marker, 1)[0]
+            break
+
     return section.splitlines()
 
 
@@ -139,7 +168,19 @@ def extract_name_from_line(line: str) -> str | None:
     lowered = name_candidate.lower()
     if any(
         token in lowered
-        for token in ("nombre del empleado", "programa", "anejo", "complete", "página", "adiestramiento")
+        for token in (
+            "nombre del empleado",
+            "employee name",
+            "programa",
+            "schedule",
+            "anejo",
+            "annex",
+            "complete",
+            "page",
+            "página",
+            "adiestramiento",
+            "training",
+        )
     ):
         return None
     if not NAME_PATTERN.search(name_candidate):
@@ -200,7 +241,7 @@ def map_dates_to_titles(tokens: list[tuple[int, str]], columns: list[tuple[int, 
 
 
 def parse_page_one(page_text: str) -> list[MatrixEntry]:
-    lines = strip_table_section(page_text, "Nombre del Empleado")
+    lines = strip_table_section(page_text)
     records: list[MatrixEntry] = []
     current_block: list[str] = []
 
@@ -234,7 +275,7 @@ def parse_page_one(page_text: str) -> list[MatrixEntry]:
 
 
 def parse_page_two(page_text: str) -> list[MatrixEntry]:
-    lines = strip_table_section(page_text, "Nombre del Empleado")
+    lines = strip_table_section(page_text)
     records: list[MatrixEntry] = []
     pending_dates_line: str | None = None
 
@@ -282,16 +323,19 @@ def parse_contractor_matrix(file_bytes: bytes, filename: str) -> ParsedContracto
 
     contractor_name = parse_contractor(pages[0])
     completed_on = parse_completed_on(pages[0])
+    language = detect_language(pages[0])
     training_records = parse_page_one(pages[0])
     certifications = parse_page_two(pages[1])
 
     if not training_records and not certifications:
-        raise ValueError("The PDF did not produce any importable training or certification records")
+        raise ValueError("The PDF did not produce any importable training records")
 
     return ParsedContractorMatrix(
         contractor_name=contractor_name,
         completed_on=completed_on,
         analysis_source=source,
+        language=language,
         training_records=training_records,
         certifications=certifications,
+        unknown_columns=[],
     )

@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from pathlib import Path
 import sys
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 PROJECT_BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -36,42 +36,78 @@ engine = create_engine(
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
+def _table_names(connection) -> set[str]:
+    rows = connection.execute(
+        text("SELECT name FROM sqlite_master WHERE type = 'table'")
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
+def _column_names(connection, table_name: str) -> set[str]:
+    rows = connection.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+    return {row[1] for row in rows}
+
+
 def ensure_schema() -> None:
-    inspector = inspect(engine)
-
     with engine.begin() as connection:
-        tables = set(inspector.get_table_names())
+        tables = _table_names(connection)
 
-        if "contractors" not in tables:
-            connection.execute(
-                text(
-                    """
-                    CREATE TABLE contractors (
-                        id INTEGER PRIMARY KEY,
-                        company_id INTEGER NOT NULL,
-                        name VARCHAR(150) NOT NULL,
-                        primary_contact VARCHAR(120),
-                        notes TEXT,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-                        FOREIGN KEY(company_id) REFERENCES companies (id) ON DELETE CASCADE
-                    )
-                    """
+        if "companies" in tables:
+            company_columns = _column_names(connection, "companies")
+            if "budget_cap" not in company_columns:
+                connection.execute(
+                    text("ALTER TABLE companies ADD COLUMN budget_cap INTEGER DEFAULT 200000000")
                 )
-            )
-            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_contractors_id ON contractors (id)"))
             connection.execute(
-                text("CREATE INDEX IF NOT EXISTS ix_contractors_company_id ON contractors (company_id)")
-            )
-            connection.execute(
-                text("CREATE INDEX IF NOT EXISTS ix_contractors_name ON contractors (name)")
+                text("UPDATE companies SET budget_cap = 200000000 WHERE budget_cap IS NULL")
             )
 
-        worker_columns = {column["name"] for column in inspector.get_columns("workers")}
-        if "contractor_id" not in worker_columns:
-            connection.execute(text("ALTER TABLE workers ADD COLUMN contractor_id INTEGER"))
+        if "contractors" in tables:
+            contractor_columns = _column_names(connection, "contractors")
+            if "budget_allocated" not in contractor_columns:
+                connection.execute(
+                    text("ALTER TABLE contractors ADD COLUMN budget_allocated INTEGER DEFAULT 0")
+                )
+            connection.execute(
+                text("UPDATE contractors SET budget_allocated = 0 WHERE budget_allocated IS NULL")
+            )
+
+        if "workers" in tables:
+            worker_columns = _column_names(connection, "workers")
+            if "contractor_id" not in worker_columns:
+                connection.execute(text("ALTER TABLE workers ADD COLUMN contractor_id INTEGER"))
+            if "onboarding_status" not in worker_columns:
+                connection.execute(
+                    text("ALTER TABLE workers ADD COLUMN onboarding_status VARCHAR(40) DEFAULT 'active'")
+                )
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS ix_workers_contractor_id ON workers (contractor_id)")
+            )
+
+        if "source_documents" in tables:
+            source_document_columns = _column_names(connection, "source_documents")
+            if "stored_file_name" not in source_document_columns:
+                connection.execute(text("ALTER TABLE source_documents ADD COLUMN stored_file_name VARCHAR(255)"))
+
+        if "worker_trainings" in tables:
+            worker_training_columns = _column_names(connection, "worker_trainings")
+            if "evidence_file_name" not in worker_training_columns:
+                connection.execute(
+                    text("ALTER TABLE worker_trainings ADD COLUMN evidence_file_name VARCHAR(255)")
+                )
+            if "evidence_stored_name" not in worker_training_columns:
+                connection.execute(
+                    text("ALTER TABLE worker_trainings ADD COLUMN evidence_stored_name VARCHAR(255)")
+                )
+            if "evidence_file_type" not in worker_training_columns:
+                connection.execute(
+                    text("ALTER TABLE worker_trainings ADD COLUMN evidence_file_type VARCHAR(120)")
+                )
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_worker_catalog "
+                    "ON worker_trainings (worker_id, catalog_id)"
+                )
             )
 
 

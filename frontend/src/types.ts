@@ -3,13 +3,17 @@ export type Company = {
   name: string
   industry: string | null
   primary_contact: string | null
+  budget_cap: number
   notes: string | null
   created_at: string
   updated_at: string
   worker_count: number
   contractor_count: number
-  certification_count: number
-  expiring_certifications: number
+  training_count: number
+  trainings_completed: number
+  budget_used: number
+  budget_remaining: number
+  budget_pct: number
 }
 
 export type Contractor = {
@@ -18,53 +22,45 @@ export type Contractor = {
   company_name: string
   name: string
   primary_contact: string | null
+  budget_allocated: number
   notes: string | null
   created_at: string
   updated_at: string
   worker_count: number
-  certification_count: number
+  trainings_completed: number
+  trainings_required: number
+  compliance_pct: number
 }
 
-export type Certification = {
+export type TrainingCatalog = {
   id: number
-  worker_id: number
-  title: string
-  contractor: string | null
-  issue_date: string | null
-  expiration_date: string | null
-  file_name: string | null
-  file_path: string | null
-  file_type: string | null
+  name: string
+  category: string
+  display_order: number
+  aliases: string | null
   notes: string | null
-  created_at: string
-  status: string
-  file_url: string | null
-  worker_name: string | null
-  company_name: string | null
 }
 
-export type CertificationAnalysis = {
-  detected_title: string | null
-  detected_contractor: string | null
-  detected_issue_date: string | null
-  detected_expiration_date: string | null
-  text_preview: string | null
-  analysis_source: string
-}
-
-export type TrainingRecord = {
-  id: number
+export type WorkerTraining = {
+  id: number | null
   worker_id: number
+  catalog_id: number
+  catalog_name: string
+  category: string
+  display_order: number
+  completed_on: string | null
   source_document_id: number | null
-  title: string
-  issue_date: string | null
+  source_document_name: string | null
+  evidence_file_name: string | null
+  evidence_file_type: string | null
+  evidence_url: string | null
   notes: string | null
-  created_at: string
+  status: string
   worker_name: string | null
   contractor_name: string | null
   company_name: string | null
-  source_document_name: string | null
-  source_file_url: string | null
+  created_at: string | null
+  updated_at: string | null
 }
 
 export type SourceDocument = {
@@ -79,6 +75,7 @@ export type SourceDocument = {
   completed_on: string | null
   created_at: string
   file_url: string | null
+  training_count: number
 }
 
 export type MatrixEmployeePreview = {
@@ -86,13 +83,14 @@ export type MatrixEmployeePreview = {
   matched_worker_id: number | null
   action: string
   training_count: number
-  certification_count: number
 }
 
 export type MatrixRecordPreview = {
   employee_name: string
-  title: string
-  issue_date: string
+  catalog_name: string
+  catalog_id: number | null
+  category: string
+  completed_on: string
   matched_worker_id: number | null
 }
 
@@ -103,9 +101,10 @@ export type ContractorMatrixPreview = {
   file_name: string
   completed_on: string | null
   analysis_source: string
+  language: string
   employee_matches: MatrixEmployeePreview[]
-  training_records: MatrixRecordPreview[]
-  certifications: MatrixRecordPreview[]
+  trainings: MatrixRecordPreview[]
+  unknown_columns: string[]
 }
 
 export type ContractorMatrixImportResult = {
@@ -114,10 +113,8 @@ export type ContractorMatrixImportResult = {
   source_document_name: string
   created_workers: number
   updated_workers: number
-  created_training_records: number
-  updated_training_records: number
-  created_certifications: number
-  updated_certifications: number
+  created_trainings: number
+  updated_trainings: number
 }
 
 export type Worker = {
@@ -136,14 +133,17 @@ export type Worker = {
   notes: string | null
   created_at: string
   updated_at: string
-  certification_count: number
-  certification_status: string
-  certifications: Certification[]
+  trainings_completed: number
+  trainings_required: number
+  compliance_pct: number
+  compliance_status: string
+  trainings: WorkerTraining[]
 }
 
 export type DashboardMetric = {
   label: string
   value: number
+  sub_label: string | null
 }
 
 export type ChartPoint = {
@@ -154,10 +154,9 @@ export type ChartPoint = {
 export type DashboardOverview = {
   company_scope: string
   metrics: DashboardMetric[]
-  onboarding_trend: ChartPoint[]
-  contractor_distribution: ChartPoint[]
-  certification_health: ChartPoint[]
-  expiring_certifications: Certification[]
+  contractor_compliance: ChartPoint[]
+  training_coverage: ChartPoint[]
+  recent_imports: SourceDocument[]
   recent_workers: Worker[]
 }
 

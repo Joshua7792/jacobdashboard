@@ -1,16 +1,14 @@
 import type {
-  CertificationAnalysis,
-  Certification,
   Company,
+  Contractor,
   ContractorMatrixImportResult,
   ContractorMatrixPreview,
-  Contractor,
-  ReportPreview,
   DashboardOverview,
+  ReportPreview,
   SourceDocument,
-  TrainingRecord,
+  TrainingCatalog,
   Worker,
-  ContractorName,
+  WorkerTraining,
 } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
@@ -49,8 +47,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }),
-  deleteCompany: (companyId: number) =>
-    request<void>(`/api/companies/${companyId}`, { method: 'DELETE' }),
+  deleteCompany: (companyId: number) => request<void>(`/api/companies/${companyId}`, { method: 'DELETE' }),
 
   getContractorRecords: (params: URLSearchParams) =>
     request<Contractor[]>(`/api/contractors?${params.toString()}`),
@@ -86,21 +83,28 @@ export const api = {
   deleteWorker: (workerId: number) =>
     request<void>(`/api/workers/${workerId}`, { method: 'DELETE' }),
 
-  getCertifications: (params: URLSearchParams) =>
-    request<Certification[]>(`/api/certifications?${params.toString()}`),
-  createCertification: (payload: FormData) =>
-    request<Certification>('/api/certifications', {
+  getTrainingCatalog: () => request<TrainingCatalog[]>('/api/training/catalog'),
+  getTrainingRecords: (params: URLSearchParams) =>
+    request<WorkerTraining[]>(`/api/training/records?${params.toString()}`),
+  upsertTrainingRecord: (payload: FormData) =>
+    request<WorkerTraining>('/api/training/records', {
       method: 'POST',
       body: payload,
     }),
-  analyzeCertificationFile: (payload: FormData) =>
-    request<CertificationAnalysis>('/api/certifications/analyze', {
+  deleteTrainingRecord: (workerId: number, catalogId: number) =>
+    request<void>(`/api/training/records/${workerId}/${catalogId}`, { method: 'DELETE' }),
+  getSourceDocuments: (params: URLSearchParams) =>
+    request<SourceDocument[]>(`/api/training/documents?${params.toString()}`),
+  previewTrainingImport: (payload: FormData) =>
+    request<ContractorMatrixPreview>('/api/training/preview', {
       method: 'POST',
       body: payload,
     }),
-  deleteCertification: (certificationId: number) =>
-    request<void>(`/api/certifications/${certificationId}`, { method: 'DELETE' }),
-  getContractors: () => request<ContractorName[]>('/api/lookups/contractors'),
+  importTrainingDocument: (payload: FormData) =>
+    request<ContractorMatrixImportResult>('/api/training/import', {
+      method: 'POST',
+      body: payload,
+    }),
 
   getDashboardOverview: (companyId: number | null) => {
     const params = new URLSearchParams()
@@ -115,23 +119,8 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  getTrainingRecords: (params: URLSearchParams) =>
-    request<TrainingRecord[]>(`/api/training/records?${params.toString()}`),
-  getSourceDocuments: (params: URLSearchParams) =>
-    request<SourceDocument[]>(`/api/training/documents?${params.toString()}`),
-  previewTrainingImport: (payload: FormData) =>
-    request<ContractorMatrixPreview>('/api/training/preview', {
-      method: 'POST',
-      body: payload,
-    }),
-  importTrainingDocument: (payload: FormData) =>
-    request<ContractorMatrixImportResult>('/api/training/import', {
-      method: 'POST',
-      body: payload,
-    }),
-
   buildExportUrl: (
-    dataset: 'workers' | 'certifications',
+    dataset: 'workers' | 'trainings',
     options: { companyId?: number | null; statusFilter?: string } = {},
   ) => {
     const params = new URLSearchParams()

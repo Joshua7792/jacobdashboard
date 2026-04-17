@@ -12,7 +12,17 @@ const emptyForm = {
   company_id: 0,
   name: '',
   primary_contact: '',
+  budget_allocated: '0',
   notes: '',
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value)
 }
 
 export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPageProps) {
@@ -61,6 +71,7 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
       company_id: contractor.company_id,
       name: contractor.name,
       primary_contact: contractor.primary_contact ?? '',
+      budget_allocated: String(contractor.budget_allocated ?? 0),
       notes: contractor.notes ?? '',
     })
   }
@@ -72,6 +83,7 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
       setMessage(null)
       const payload = {
         ...form,
+        budget_allocated: Number(form.budget_allocated || 0),
         primary_contact: form.primary_contact || null,
         notes: form.notes || null,
       }
@@ -93,7 +105,7 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
 
   async function handleDelete() {
     if (!selectedId) return
-    if (!window.confirm('Delete this contractor? Employees will become unassigned.')) return
+    if (!window.confirm('Delete this contractor? Workers will become unassigned.')) return
     try {
       setBusy(true)
       await api.deleteContractor(selectedId)
@@ -109,13 +121,13 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
 
   return (
     <section className="page-grid two-column">
-      <article className="surface">
+      <article className="surface panel-stack">
         <div className="section-heading">
           <div>
             <p className="eyebrow">Project contractors</p>
             <h3>Contractor groups</h3>
           </div>
-          <button className="ghost-button" onClick={() => fillForm(null)}>
+          <button className="ghost-button" onClick={() => fillForm(null)} type="button">
             New contractor
           </button>
         </div>
@@ -130,15 +142,17 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
               <strong>{contractor.name}</strong>
               <p>{contractor.primary_contact || contractor.company_name}</p>
               <div className="company-metrics">
-                <span>{contractor.worker_count} employees</span>
-                <span>{contractor.certification_count} certs</span>
+                <span>{contractor.worker_count} workers</span>
+                <span>{contractor.trainings_completed}/{contractor.trainings_required} complete</span>
+                <span>{contractor.compliance_pct}% ready</span>
+                <span>{formatCurrency(contractor.budget_allocated)} budget</span>
               </div>
             </button>
           ))}
         </div>
       </article>
 
-      <article className="surface">
+      <article className="surface panel-stack">
         <div className="section-heading">
           <div>
             <p className="eyebrow">{selectedId ? 'Edit contractor' : 'Create contractor'}</p>
@@ -148,7 +162,7 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
 
         <form className="form-grid" onSubmit={handleSubmit}>
           <label className="field">
-            <span>Company</span>
+            <span>Project</span>
             <select
               required
               value={form.company_id}
@@ -184,6 +198,19 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
             />
           </label>
 
+          <label className="field">
+            <span>Budget allocated</span>
+            <input
+              min="0"
+              step="1000"
+              type="number"
+              value={form.budget_allocated}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, budget_allocated: event.target.value }))
+              }
+            />
+          </label>
+
           <label className="field field-full">
             <span>Notes</span>
             <textarea
@@ -209,4 +236,3 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
     </section>
   )
 }
-

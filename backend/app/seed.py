@@ -1,12 +1,56 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
-from .config import DEFAULT_COMPANY_NAME, DEFAULT_CONTRACTORS, DEMO_CONTRACTOR_MAPPINGS, LEGACY_DEMO_COMPANY_NAMES
-from .models import Certification, Company, Contractor, Worker
+from .config import (
+    DEFAULT_COMPANY_NAME,
+    DEFAULT_CONTRACTORS,
+    LEGACY_DEMO_COMPANY_NAMES,
+    TRAINING_CATALOG,
+    CATEGORY_OTROS,
+    CATEGORY_PRIMARY,
+)
+from .models import Company, Contractor, TrainingCatalog, WorkerTraining
+from .services.catalog import build_database_catalog_lookup, normalize_catalog_key, serialize_aliases
+
+
+def ensure_project_company(session: Session) -> Company:
+    companies = session.scalars(select(Company).order_by(Company.id)).all()
+    project = next((company for company in companies if company.name == DEFAULT_COMPANY_NAME), None)
+
+    if project is None and len(companies) == 1:
+        project = companies[0]
+        project.name = DEFAULT_COMPANY_NAME
+
+    if project is None:
+        project = Company(
+            name=DEFAULT_COMPANY_NAME,
+            industry="Engineering and Construction Management",
+            primary_contact="Project Coordination Team",
+            budget_cap=200_000_000,
+            notes="Cordillera project workforce tracking across active contractors.",
+        )
+        session.add(project)
+        session.flush()
+
+    if not project.industry:
+        project.industry = "Engineering and Construction Management"
+    if not project.primary_contact:
+        project.primary_contact = "Project Coordination Team"
+    if not project.budget_cap:
+        project.budget_cap = 200_000_000
+    if not project.notes:
+        project.notes = "Cordillera project workforce tracking across active contractors."
+
+    for company in companies:
+        if company.id != project.id and company.name in LEGACY_DEMO_COMPANY_NAMES:
+            session.delete(company)
+
+    session.flush()
+    return project
 
 
 def ensure_default_contractors(session: Session, company_id: int) -> dict[str, Contractor]:
@@ -17,10 +61,7 @@ def ensure_default_contractors(session: Session, company_id: int) -> dict[str, C
 
     for contractor_name in DEFAULT_CONTRACTORS:
         if contractor_name not in by_name:
-            contractor = Contractor(
-                company_id=company_id,
-                name=contractor_name,
-            )
+            contractor = Contractor(company_id=company_id, name=contractor_name)
             session.add(contractor)
             session.flush()
             by_name[contractor.name] = contractor
@@ -28,255 +69,171 @@ def ensure_default_contractors(session: Session, company_id: int) -> dict[str, C
     return by_name
 
 
-def _insert_demo_workers_and_certifications(session: Session, company_id: int) -> None:
-    contractors = ensure_default_contractors(session, company_id)
-    workers = [
-        Worker(
-            company_id=company_id,
-            contractor_id=contractors["GeoEnvirotech"].id,
-            full_name="Alicia Gomez",
-            employee_code="AT-101",
-            job_title="Site Coordinator",
-            onboarding_status="new",
-            hire_date=date.today() - timedelta(days=7),
-            email="alicia@example.com",
-        ),
-        Worker(
-            company_id=company_id,
-            contractor_id=contractors["GeoEnvirotech"].id,
-            full_name="Luis Martinez",
-            employee_code="AT-102",
-            job_title="Safety Technician",
-            onboarding_status="active",
-            hire_date=date.today() - timedelta(days=110),
-            email="luis@example.com",
-        ),
-        Worker(
-            company_id=company_id,
-            contractor_id=contractors["Cornerstone"].id,
-            full_name="Sofia Bennett",
-            employee_code="SE-210",
-            job_title="Journeyman Electrician",
-            onboarding_status="active",
-            hire_date=date.today() - timedelta(days=60),
-            email="sofia@example.com",
-        ),
-        Worker(
-            company_id=company_id,
-            contractor_id=contractors["Cornerstone"].id,
-            full_name="Noah Patel",
-            employee_code="SE-211",
-            job_title="Foreman",
-            onboarding_status="active",
-            hire_date=date.today() - timedelta(days=20),
-            email="noah@example.com",
-        ),
-        Worker(
-            company_id=company_id,
-            contractor_id=contractors["Cornerstone"].id,
-            full_name="Mia Torres",
-            employee_code="HM-301",
-            job_title="Pipefitter",
-            onboarding_status="active",
-            hire_date=date.today() - timedelta(days=180),
-            email="mia@example.com",
-        ),
-    ]
-    session.add_all(workers)
-    session.flush()
+def ensure_training_catalog(session: Session) -> list[TrainingCatalog]:
+    existing = session.scalars(select(TrainingCatalog).order_by(TrainingCatalog.display_order)).all()
+    by_name = {item.name: item for item in existing}
 
-    certifications = [
-        Certification(
-            worker_id=workers[0].id,
-            title="OSHA 30",
-            contractor="GeoEnvirotech",
-            issue_date=date.today() - timedelta(days=20),
-            expiration_date=date.today() + timedelta(days=320),
-            file_name="osha30-alicia.pdf",
-            file_path="demo/osha30-alicia.pdf",
-            file_type="application/pdf",
-        ),
-        Certification(
-            worker_id=workers[1].id,
-            title="Confined Space",
-            contractor="GeoEnvirotech",
-            issue_date=date.today() - timedelta(days=320),
-            expiration_date=date.today() + timedelta(days=12),
-            file_name="confined-luis.pdf",
-            file_path="demo/confined-luis.pdf",
-            file_type="application/pdf",
-        ),
-        Certification(
-            worker_id=workers[2].id,
-            title="NFPA 70E",
-            contractor="Cornerstone",
-            issue_date=date.today() - timedelta(days=300),
-            expiration_date=date.today() - timedelta(days=8),
-            file_name="nfpa-sofia.pdf",
-            file_path="demo/nfpa-sofia.pdf",
-            file_type="application/pdf",
-        ),
-        Certification(
-            worker_id=workers[3].id,
-            title="Lift Training",
-            contractor="Cornerstone",
-            issue_date=date.today() - timedelta(days=40),
-            expiration_date=date.today() + timedelta(days=180),
-            file_name="lift-noah.pdf",
-            file_path="demo/lift-noah.pdf",
-            file_type="application/pdf",
-        ),
-        Certification(
-            worker_id=workers[4].id,
-            title="Rigging Basics",
-            contractor="Cornerstone",
-            issue_date=date.today() - timedelta(days=85),
-            expiration_date=None,
-            file_name="rigging-mia.pdf",
-            file_path="demo/rigging-mia.pdf",
-            file_type="application/pdf",
-        ),
-    ]
-    session.add_all(certifications)
-    session.flush()
-
-
-def seed_demo_data(session: Session) -> None:
-    existing_company = session.scalar(select(Company.id).limit(1))
-    if existing_company:
-        return
-
-    jacobs = Company(
-        name=DEFAULT_COMPANY_NAME,
-        industry="Engineering and Construction",
-        primary_contact="Project Coordination Team",
-        notes="Jacobs project workforce tracking across active contractors.",
-    )
-    session.add(jacobs)
-    session.flush()
-
-    _insert_demo_workers_and_certifications(session, jacobs.id)
-
-
-def normalize_demo_contractors(session: Session) -> None:
-    certifications = session.scalars(select(Certification)).all()
-    changed = False
-
-    for certification in certifications:
-        mapped_name = DEMO_CONTRACTOR_MAPPINGS.get(certification.contractor or "")
-        if mapped_name and certification.contractor != mapped_name:
-            certification.contractor = mapped_name
-            changed = True
-
-    if changed:
-        session.flush()
-
-
-def normalize_demo_companies(session: Session) -> None:
-    companies = session.scalars(select(Company).order_by(Company.id)).all()
-    if not companies:
-        return
-
-    jacobs = next((company for company in companies if company.name == DEFAULT_COMPANY_NAME), None)
-    if jacobs is None:
-        jacobs = Company(
-            name=DEFAULT_COMPANY_NAME,
-            industry="Engineering and Construction",
-            primary_contact="Project Coordination Team",
-            notes="Jacobs project workforce tracking across active contractors.",
-        )
-        session.add(jacobs)
-        session.flush()
-
-    legacy_companies = [
-        company
-        for company in companies
-        if company.name in LEGACY_DEMO_COMPANY_NAMES and company.id != jacobs.id
-    ]
-
-    changed = False
-    for legacy_company in legacy_companies:
-        session.execute(
-            update(Worker)
-            .where(Worker.company_id == legacy_company.id)
-            .values(company_id=jacobs.id)
-        )
-        session.delete(legacy_company)
-        changed = True
-
-    if not jacobs.industry:
-        jacobs.industry = "Engineering and Construction"
-        changed = True
-    if not jacobs.primary_contact:
-        jacobs.primary_contact = "Project Coordination Team"
-        changed = True
-    if not jacobs.notes:
-        jacobs.notes = "Jacobs project workforce tracking across active contractors."
-        changed = True
-
-    if changed:
-        session.flush()
-
-
-def ensure_jacobs_demo_dataset(session: Session) -> None:
-    jacobs = session.scalar(select(Company).where(Company.name == DEFAULT_COMPANY_NAME))
-    worker_count = session.scalar(select(Worker.id).where(Worker.company_id == jacobs.id).limit(1)) if jacobs else None
-
-    if jacobs is not None and worker_count is None:
-        _insert_demo_workers_and_certifications(session, jacobs.id)
-
-
-def remove_duplicate_demo_workers(session: Session) -> None:
-    jacobs = session.scalar(select(Company).where(Company.name == DEFAULT_COMPANY_NAME))
-    if jacobs is None:
-        return
-
-    demo_codes = {"AT-101", "AT-102", "SE-210", "SE-211", "HM-301"}
-    workers = session.scalars(
-        select(Worker)
-        .where(Worker.company_id == jacobs.id, Worker.employee_code.in_(demo_codes))
-        .order_by(Worker.employee_code, Worker.id)
-    ).all()
-
-    seen_codes: set[str] = set()
-    duplicate_ids: list[int] = []
-    for worker in workers:
-        code = worker.employee_code or ""
-        if code in seen_codes:
-            duplicate_ids.append(worker.id)
+    for entry in TRAINING_CATALOG:
+        aliases = serialize_aliases(entry.get("aliases", []))
+        catalog_item = by_name.get(entry["name"])
+        if catalog_item is None:
+            catalog_item = TrainingCatalog(
+                name=entry["name"],
+                category=entry["category"],
+                display_order=entry["order"],
+                aliases=aliases,
+            )
+            session.add(catalog_item)
+            session.flush()
+            by_name[catalog_item.name] = catalog_item
         else:
-            seen_codes.add(code)
+            catalog_item.category = entry["category"]
+            catalog_item.display_order = entry["order"]
+            catalog_item.aliases = aliases
 
-    if duplicate_ids:
-        session.execute(delete(Worker).where(Worker.id.in_(duplicate_ids)))
+    session.flush()
+    return session.scalars(select(TrainingCatalog).order_by(TrainingCatalog.display_order, TrainingCatalog.id)).all()
+
+
+def ensure_catalog_item(
+    session: Session,
+    lookup: dict[str, TrainingCatalog],
+    title: str,
+    category: str,
+) -> TrainingCatalog:
+    normalized = normalize_catalog_key(title)
+    if normalized in lookup:
+        return lookup[normalized]
+
+    max_order = session.scalar(select(TrainingCatalog.display_order).order_by(TrainingCatalog.display_order.desc()).limit(1)) or 0
+    catalog_item = TrainingCatalog(
+        name=title.strip(),
+        category=category,
+        display_order=max_order + 1,
+    )
+    session.add(catalog_item)
+    session.flush()
+    lookup[normalized] = catalog_item
+    return catalog_item
+
+
+def upsert_worker_training(
+    session: Session,
+    existing_rows: dict[tuple[int, int], WorkerTraining],
+    *,
+    worker_id: int,
+    catalog_id: int,
+    completed_on,
+    source_document_id=None,
+    evidence_file_name=None,
+    evidence_stored_name=None,
+    evidence_file_type=None,
+    notes=None,
+) -> tuple[WorkerTraining, bool, bool]:
+    if isinstance(completed_on, str) and completed_on:
+        completed_on = date.fromisoformat(completed_on)
+
+    key = (worker_id, catalog_id)
+    row = existing_rows.get(key)
+    created = False
+    updated = False
+
+    if row is None:
+        row = WorkerTraining(worker_id=worker_id, catalog_id=catalog_id)
+        session.add(row)
         session.flush()
+        existing_rows[key] = row
+        created = True
+
+    if completed_on and row.completed_on != completed_on:
+        row.completed_on = completed_on
+        updated = True
+    if source_document_id and row.source_document_id != source_document_id:
+        row.source_document_id = source_document_id
+        updated = True
+    if evidence_file_name and row.evidence_file_name != evidence_file_name:
+        row.evidence_file_name = evidence_file_name
+        updated = True
+    if evidence_stored_name and row.evidence_stored_name != evidence_stored_name:
+        row.evidence_stored_name = evidence_stored_name
+        updated = True
+    if evidence_file_type and row.evidence_file_type != evidence_file_type:
+        row.evidence_file_type = evidence_file_type
+        updated = True
+    if notes and row.notes != notes:
+        row.notes = notes
+        updated = True
+
+    return row, created, updated
 
 
-def normalize_demo_worker_contractors(session: Session) -> None:
-    workers = session.scalars(
-        select(Worker)
-        .options()
-        .order_by(Worker.id)
-    ).all()
-    companies = session.scalars(select(Company)).all()
-    contractor_maps = {
-        company.id: ensure_default_contractors(session, company.id)
-        for company in companies
+def migrate_legacy_training_data(session: Session) -> None:
+    inspector = inspect(session.bind)
+    tables = set(inspector.get_table_names())
+    if "workers" not in tables:
+        return
+
+    catalog_items = ensure_training_catalog(session)
+    catalog_lookup = build_database_catalog_lookup(catalog_items)
+    existing_rows = {
+        (row.worker_id, row.catalog_id): row
+        for row in session.scalars(select(WorkerTraining)).all()
     }
 
-    changed = False
-    for worker in workers:
-        worker_contractors = [
-            certification.contractor
-            for certification in worker.certifications
-            if certification.contractor
-        ]
-        target_name = worker_contractors[0] if worker_contractors else None
-        if target_name and worker.company_id in contractor_maps and target_name in contractor_maps[worker.company_id]:
-            target_id = contractor_maps[worker.company_id][target_name].id
-            if worker.contractor_id != target_id:
-                worker.contractor_id = target_id
-                changed = True
+    def catalog_for_title(title: str, category: str) -> TrainingCatalog:
+        normalized = normalize_catalog_key(title)
+        catalog_item = catalog_lookup.get(normalized)
+        if catalog_item is None:
+            catalog_item = build_database_catalog_lookup(ensure_training_catalog(session)).get(normalized)
+        if catalog_item is None:
+            catalog_item = ensure_catalog_item(session, catalog_lookup, title, category)
+            catalog_lookup.update(build_database_catalog_lookup(ensure_training_catalog(session)))
+        return catalog_item
 
-    if changed:
-        session.flush()
+    if "training_records" in tables:
+        training_rows = session.execute(
+            text(
+                """
+                SELECT worker_id, source_document_id, title, issue_date, notes
+                FROM training_records
+                ORDER BY worker_id, id
+                """
+            )
+        ).mappings()
+        for row in training_rows:
+            catalog_item = catalog_for_title(row["title"], CATEGORY_PRIMARY)
+            upsert_worker_training(
+                session,
+                existing_rows,
+                worker_id=row["worker_id"],
+                catalog_id=catalog_item.id,
+                completed_on=row["issue_date"],
+                source_document_id=row["source_document_id"],
+                notes=row["notes"],
+            )
+
+    if "certifications" in tables:
+        certification_rows = session.execute(
+            text(
+                """
+                SELECT worker_id, title, issue_date, file_name, file_path, file_type, notes
+                FROM certifications
+                ORDER BY worker_id, id
+                """
+            )
+        ).mappings()
+        for row in certification_rows:
+            catalog_item = catalog_for_title(row["title"], CATEGORY_OTROS)
+            upsert_worker_training(
+                session,
+                existing_rows,
+                worker_id=row["worker_id"],
+                catalog_id=catalog_item.id,
+                completed_on=row["issue_date"],
+                evidence_file_name=row["file_name"],
+                evidence_stored_name=row["file_path"],
+                evidence_file_type=row["file_type"],
+                notes=row["notes"],
+            )
+
+    session.flush()

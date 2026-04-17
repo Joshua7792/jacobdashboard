@@ -4,13 +4,15 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { api } from './api'
 import './App.css'
 import { ShellLayout } from './components/ShellLayout'
-import { CompaniesPage } from './pages/CompaniesPage'
 import { ContractorsPage } from './pages/ContractorsPage'
 import { WorkersPage } from './pages/WorkersPage'
 import type { Company } from './types'
 
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
+)
+const FinancePage = lazy(() =>
+  import('./pages/FinancePage').then((module) => ({ default: module.FinancePage })),
 )
 const CertificationsPage = lazy(() =>
   import('./pages/CertificationsPage').then((module) => ({
@@ -35,7 +37,9 @@ function App() {
       setError(null)
       const data = await api.getCompanies()
       setCompanies(data)
-      if (selectedCompanyId && !data.some((company) => company.id === selectedCompanyId)) {
+      if (data.length === 1) {
+        setSelectedCompanyId(data[0].id)
+      } else if (selectedCompanyId && !data.some((company) => company.id === selectedCompanyId)) {
         setSelectedCompanyId(null)
       }
     } catch (loadError) {
@@ -65,8 +69,14 @@ function App() {
           <Routes>
             <Route path="/" element={<DashboardPage selectedCompanyId={selectedCompanyId} />} />
             <Route
-              path="/companies"
-              element={<CompaniesPage companies={companies} onRefresh={loadCompanies} />}
+              path="/finance"
+              element={
+                <FinancePage
+                  companies={companies}
+                  selectedCompanyId={selectedCompanyId}
+                  onRefreshCompanies={loadCompanies}
+                />
+              }
             />
             <Route
               path="/contractors"
