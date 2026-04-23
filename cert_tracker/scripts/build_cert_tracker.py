@@ -1,9 +1,13 @@
 """Build the Contractor Certification Tracker workbook.
 
 Generates `Contractor Certifications Tracker.xlsx` in the project root.
+
+SAFETY: refuses to overwrite an existing workbook. Pass --force to override
+(you will lose all imported contractors, workers, and cert dates).
 """
 from __future__ import annotations
 
+import sys
 from datetime import date
 from pathlib import Path
 
@@ -559,7 +563,26 @@ def build_dashboard(wb: Workbook) -> None:
     ws.sheet_view.showGridLines = False
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
+    args = list(argv if argv is not None else sys.argv[1:])
+    force = "--force" in args
+
+    if OUTPUT.exists() and not force:
+        print("=" * 70)
+        print("SAFETY STOP: Workbook already exists.")
+        print(f"  {OUTPUT}")
+        print()
+        print("This script creates a BRAND-NEW workbook from scratch and would")
+        print("overwrite the existing file, losing every contractor, worker, and")
+        print("cert date you have imported so far.")
+        print()
+        print("If you really want to rebuild from seed data, run:")
+        print("    python scripts/build_cert_tracker.py --force")
+        print()
+        print("To update the workbook with new data, use Import PDF.bat instead.")
+        print("=" * 70)
+        return 1
+
     wb = Workbook()
     # Remove default sheet, we'll create our own
     wb.remove(wb.active)
@@ -574,7 +597,8 @@ def main() -> None:
 
     wb.save(OUTPUT)
     print(f"Saved: {OUTPUT}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
