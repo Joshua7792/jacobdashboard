@@ -12,17 +12,7 @@ const emptyForm = {
   company_id: 0,
   name: '',
   primary_contact: '',
-  budget_allocated: '0',
   notes: '',
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value)
 }
 
 export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPageProps) {
@@ -78,7 +68,6 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
       company_id: contractor.company_id,
       name: contractor.name,
       primary_contact: contractor.primary_contact ?? '',
-      budget_allocated: String(contractor.budget_allocated ?? 0),
       notes: contractor.notes ?? '',
     })
   }
@@ -96,7 +85,6 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
       setMessage(null)
       const payload = {
         ...form,
-        budget_allocated: Number(form.budget_allocated || 0),
         primary_contact: form.primary_contact || null,
         notes: form.notes || null,
       }
@@ -158,7 +146,6 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
                 <span>{workerCountsByContractorId[contractor.id] ?? contractor.worker_count} workers</span>
                 <span>{contractor.trainings_completed}/{contractor.trainings_required} complete</span>
                 <span>{contractor.compliance_pct}% ready</span>
-                <span>{formatCurrency(contractor.budget_allocated)} budget</span>
               </div>
             </button>
           ))}
@@ -207,19 +194,6 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
               value={form.primary_contact}
               onChange={(event) =>
                 setForm((current) => ({ ...current, primary_contact: event.target.value }))
-              }
-            />
-          </label>
-
-          <label className="field">
-            <span>Budget allocated</span>
-            <input
-              min="0"
-              step="1000"
-              type="number"
-              value={form.budget_allocated}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, budget_allocated: event.target.value }))
               }
             />
           </label>

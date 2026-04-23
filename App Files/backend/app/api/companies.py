@@ -14,15 +14,11 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 
 def to_company_read(company: Company, catalog_items: list[TrainingCatalog]) -> CompanyRead:
     completed, required = company_training_counts(company, catalog_items)
-    budget_used = sum(contractor.budget_allocated or 0 for contractor in company.contractors)
-    budget_remaining = (company.budget_cap or 0) - budget_used
-    budget_pct = round((budget_used / company.budget_cap) * 100) if company.budget_cap else 0
     return CompanyRead(
         id=company.id,
         name=company.name,
         industry=company.industry,
         primary_contact=company.primary_contact,
-        budget_cap=company.budget_cap,
         notes=company.notes,
         created_at=company.created_at,
         updated_at=company.updated_at,
@@ -30,9 +26,6 @@ def to_company_read(company: Company, catalog_items: list[TrainingCatalog]) -> C
         contractor_count=len(company.contractors),
         training_count=required,
         trainings_completed=completed,
-        budget_used=budget_used,
-        budget_remaining=budget_remaining,
-        budget_pct=budget_pct,
     )
 
 

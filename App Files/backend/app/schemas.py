@@ -10,7 +10,6 @@ class CompanyBase(BaseModel):
     name: str = Field(min_length=2, max_length=150)
     industry: Optional[str] = Field(default=None, max_length=120)
     primary_contact: Optional[str] = Field(default=None, max_length=120)
-    budget_cap: int = Field(default=200_000_000, ge=0)
     notes: Optional[str] = None
 
 
@@ -32,16 +31,12 @@ class CompanyRead(CompanyBase):
     contractor_count: int = 0
     training_count: int = 0
     trainings_completed: int = 0
-    budget_used: int = 0
-    budget_remaining: int = 0
-    budget_pct: int = 0
 
 
 class ContractorBase(BaseModel):
     company_id: int
     name: str = Field(min_length=2, max_length=150)
     primary_contact: Optional[str] = Field(default=None, max_length=120)
-    budget_allocated: int = Field(default=0, ge=0)
     notes: Optional[str] = None
 
 

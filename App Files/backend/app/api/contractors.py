@@ -20,7 +20,6 @@ def to_contractor_read(contractor: Contractor, catalog_items: list[TrainingCatal
         company_id=contractor.company_id,
         name=contractor.name,
         primary_contact=contractor.primary_contact,
-        budget_allocated=contractor.budget_allocated,
         notes=contractor.notes,
         company_name=contractor.company.name,
         created_at=contractor.created_at,

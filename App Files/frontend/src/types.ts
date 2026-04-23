@@ -3,7 +3,6 @@ export type Company = {
   name: string
   industry: string | null
   primary_contact: string | null
-  budget_cap: number
   notes: string | null
   created_at: string
   updated_at: string
@@ -11,9 +10,6 @@ export type Company = {
   contractor_count: number
   training_count: number
   trainings_completed: number
-  budget_used: number
-  budget_remaining: number
-  budget_pct: number
 }
 
 export type Contractor = {
@@ -22,7 +18,6 @@ export type Contractor = {
   company_name: string
   name: string
   primary_contact: string | null
-  budget_allocated: number
   notes: string | null
   created_at: string
   updated_at: string

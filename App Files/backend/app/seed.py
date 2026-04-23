@@ -30,7 +30,6 @@ def ensure_project_company(session: Session) -> Company:
             name=DEFAULT_COMPANY_NAME,
             industry="Engineering and Construction Management",
             primary_contact="Project Coordination Team",
-            budget_cap=200_000_000,
             notes="Cordillera project workforce tracking across active contractors.",
         )
         session.add(project)
@@ -40,8 +39,6 @@ def ensure_project_company(session: Session) -> Company:
         project.industry = "Engineering and Construction Management"
     if not project.primary_contact:
         project.primary_contact = "Project Coordination Team"
-    if not project.budget_cap:
-        project.budget_cap = 200_000_000
     if not project.notes:
         project.notes = "Cordillera project workforce tracking across active contractors."
 

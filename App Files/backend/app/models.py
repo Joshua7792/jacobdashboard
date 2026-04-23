@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -16,7 +16,6 @@ class Company(Base):
     name: Mapped[str] = mapped_column(String(150), unique=True, index=True)
     industry: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     primary_contact: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
-    budget_cap: Mapped[int] = mapped_column(BigInteger, default=200_000_000, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -45,7 +44,6 @@ class Contractor(Base):
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(150), index=True)
     primary_contact: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
-    budget_allocated: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

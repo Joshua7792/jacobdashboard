@@ -1,7 +1,6 @@
 import {
   BarChart3,
   BriefcaseBusiness,
-  DollarSign,
   FileStack,
   LayoutDashboard,
   ShieldCheck,
@@ -21,7 +20,6 @@ type ShellLayoutProps = {
 
 const navigation = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/finance', label: 'Finance', icon: DollarSign },
   { to: '/contractors', label: 'Contractors', icon: BriefcaseBusiness },
   { to: '/employees', label: 'Workforce', icon: Users },
   { to: '/training', label: 'Training Hub', icon: FileStack },
@@ -65,8 +63,8 @@ export function ShellLayout({
           <p className="eyebrow">What this app does well</p>
           <p>
             Keeps the Cordillera project organized, divides contractors with their own workers,
-            tracks contractor budget use against the project cap, and turns raw project records
-            and source evidence into usable charts without needing Excel.
+            and turns raw project records and source evidence into usable charts without needing
+            Excel.
           </p>
         </div>
       </aside>

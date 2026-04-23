@@ -11,9 +11,6 @@ import type { Company } from './types'
 const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
 )
-const FinancePage = lazy(() =>
-  import('./pages/FinancePage').then((module) => ({ default: module.FinancePage })),
-)
 const CertificationsPage = lazy(() =>
   import('./pages/CertificationsPage').then((module) => ({
     default: module.CertificationsPage,
@@ -68,16 +65,6 @@ function App() {
         <Suspense fallback={<div className="loading">Loading page...</div>}>
           <Routes>
             <Route path="/" element={<DashboardPage selectedCompanyId={selectedCompanyId} />} />
-            <Route
-              path="/finance"
-              element={
-                <FinancePage
-                  companies={companies}
-                  selectedCompanyId={selectedCompanyId}
-                  onRefreshCompanies={loadCompanies}
-                />
-              }
-            />
             <Route
               path="/contractors"
               element={

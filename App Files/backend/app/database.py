@@ -52,26 +52,6 @@ def ensure_schema() -> None:
     with engine.begin() as connection:
         tables = _table_names(connection)
 
-        if "companies" in tables:
-            company_columns = _column_names(connection, "companies")
-            if "budget_cap" not in company_columns:
-                connection.execute(
-                    text("ALTER TABLE companies ADD COLUMN budget_cap INTEGER DEFAULT 200000000")
-                )
-            connection.execute(
-                text("UPDATE companies SET budget_cap = 200000000 WHERE budget_cap IS NULL")
-            )
-
-        if "contractors" in tables:
-            contractor_columns = _column_names(connection, "contractors")
-            if "budget_allocated" not in contractor_columns:
-                connection.execute(
-                    text("ALTER TABLE contractors ADD COLUMN budget_allocated INTEGER DEFAULT 0")
-                )
-            connection.execute(
-                text("UPDATE contractors SET budget_allocated = 0 WHERE budget_allocated IS NULL")
-            )
-
         if "workers" in tables:
             worker_columns = _column_names(connection, "workers")
             if "contractor_id" not in worker_columns:
