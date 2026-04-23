@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 
 import { api } from '../api'
-import type { Company, Contractor } from '../types'
+import type { Company, Contractor, Worker } from '../types'
 
 type ContractorsPageProps = {
   companies: Company[]
@@ -27,6 +27,7 @@ function formatCurrency(value: number) {
 
 export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPageProps) {
   const [contractors, setContractors] = useState<Contractor[]>([])
+  const [workers, setWorkers] = useState<Worker[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [form, setForm] = useState({
     ...emptyForm,
@@ -38,9 +39,15 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
   async function loadContractors() {
     const params = new URLSearchParams()
     if (selectedCompanyId) params.set('company_id', String(selectedCompanyId))
-    const data = await api.getContractorRecords(params)
-    setContractors(data)
-    setSelectedId((current) => (current && data.some((item) => item.id === current) ? current : null))
+    const [contractorData, workerData] = await Promise.all([
+      api.getContractorRecords(params),
+      api.getWorkers(params),
+    ])
+    setContractors(contractorData)
+    setWorkers(workerData)
+    setSelectedId((current) =>
+      current && contractorData.some((item) => item.id === current) ? current : null,
+    )
   }
 
   useEffect(() => {
@@ -75,6 +82,12 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
       notes: contractor.notes ?? '',
     })
   }
+
+  const workerCountsByContractorId = workers.reduce<Record<number, number>>((counts, worker) => {
+    if (worker.contractor_id == null) return counts
+    counts[worker.contractor_id] = (counts[worker.contractor_id] ?? 0) + 1
+    return counts
+  }, {})
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -142,7 +155,7 @@ export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPag
               <strong>{contractor.name}</strong>
               <p>{contractor.primary_contact || contractor.company_name}</p>
               <div className="company-metrics">
-                <span>{contractor.worker_count} workers</span>
+                <span>{workerCountsByContractorId[contractor.id] ?? contractor.worker_count} workers</span>
                 <span>{contractor.trainings_completed}/{contractor.trainings_required} complete</span>
                 <span>{contractor.compliance_pct}% ready</span>
                 <span>{formatCurrency(contractor.budget_allocated)} budget</span>

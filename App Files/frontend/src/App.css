@@ -901,120 +901,96 @@ body {
   align-items: start;
 }
 
-.budget-gauge-shell {
+.finance-heading-meta {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.budget-overview-stack {
+  display: grid;
   gap: 18px;
 }
 
-.budget-gauge {
-  width: 100%;
-  max-width: 420px;
+.budget-overview-chart,
+.contractor-chart-shell {
+  padding: 14px 12px 6px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(237, 242, 255, 0.92));
+  border: 1px solid rgba(191, 219, 254, 0.8);
 }
 
-.budget-gauge-track {
-  fill: none;
-  stroke: rgba(203, 213, 225, 0.85);
-  stroke-width: 24;
-  stroke-linecap: round;
-}
-
-.budget-gauge-zone {
-  fill: none;
-  stroke-width: 24;
-  stroke-linecap: round;
-  opacity: 0.38;
-}
-
-.budget-gauge-zone-safe {
-  stroke: #22c55e;
-}
-
-.budget-gauge-zone-warning {
-  stroke: #f59e0b;
-}
-
-.budget-gauge-zone-danger {
-  stroke: #ef4444;
-}
-
-.budget-gauge-progress {
-  fill: none;
-  stroke: url(#budget-progress);
-  stroke-width: 24;
-  stroke-linecap: round;
-}
-
-.budget-gauge-needle {
-  stroke-width: 6;
-  stroke-linecap: round;
-  transition: stroke 180ms ease;
-}
-
-.budget-gauge-needle-safe {
-  stroke: #15803d;
-}
-
-.budget-gauge-needle-warning {
-  stroke: #b45309;
-}
-
-.budget-gauge-needle-danger {
-  stroke: #b91c1c;
-}
-
-.budget-gauge-hub {
-  transition: fill 180ms ease;
-}
-
-.budget-gauge-hub-safe {
-  fill: #15803d;
-}
-
-.budget-gauge-hub-warning {
-  fill: #b45309;
-}
-
-.budget-gauge-hub-danger {
-  fill: #b91c1c;
-}
-
-.budget-gauge-scale {
-  fill: #64748b;
-  font-size: 0.75rem;
-}
-
-.budget-gauge-scale-mid {
-  text-anchor: middle;
-}
-
-.budget-gauge-scale-end {
-  text-anchor: end;
-}
-
-.budget-gauge-readout {
+.budget-chart-caption {
   text-align: center;
 }
 
-.budget-gauge-readout span {
+.budget-chart-caption span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.budget-chart-caption strong {
   display: block;
-  font-size: 0.76rem;
+  margin-top: 12px;
+  font-size: 2rem;
+  color: #0f172a;
+}
+
+.budget-chart-caption p {
+  margin: 10px auto 0;
+  max-width: 620px;
+  color: #64748b;
+}
+
+.tone-safe {
+  background: rgba(220, 252, 231, 0.95);
+  color: #166534;
+}
+
+.tone-warning {
+  background: rgba(254, 243, 199, 0.95);
+  color: #92400e;
+}
+
+.tone-danger {
+  background: rgba(254, 226, 226, 0.95);
+  color: #b91c1c;
+}
+
+.budget-threshold-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.threshold-card {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.94);
+  border: 1px solid rgba(226, 232, 240, 0.92);
+}
+
+.threshold-card span {
+  display: block;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #64748b;
 }
 
-.budget-gauge-readout strong {
+.threshold-card strong {
   display: block;
-  margin-top: 10px;
-  font-size: 2rem;
+  margin-top: 8px;
   color: #0f172a;
-}
-
-.budget-gauge-readout p {
-  margin: 10px 0 0;
-  color: #64748b;
 }
 
 .budget-zone-legend {
@@ -1029,6 +1005,36 @@ body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+.finance-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.finance-insight-card {
+  padding: 18px;
+}
+
+.finance-insight-card span {
+  display: block;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+}
+
+.finance-insight-card strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 1.35rem;
+  color: #0f172a;
+}
+
+.finance-insight-card p {
+  margin: 10px 0 0;
+  color: #64748b;
 }
 
 .finance-cap-form,
@@ -1053,6 +1059,21 @@ body {
 
 .finance-contractor-card {
   padding: 20px;
+}
+
+.finance-audit-notes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.finance-note-card {
+  padding: 18px;
+}
+
+.finance-note-card p {
+  margin: 8px 0 0;
+  color: #64748b;
 }
 
 .budget-bar-track {
@@ -1095,8 +1116,11 @@ body {
   .report-grid,
   .audit-hero,
   .audit-stat-grid,
+  .budget-threshold-grid,
   .budget-zone-legend,
   .budget-summary-grid,
+  .finance-insight-grid,
+  .finance-audit-notes,
   .worker-summary-grid,
   .worker-info-grid,
   .preview-dual-grid,

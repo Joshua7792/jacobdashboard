@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import platform
 from pathlib import Path
 
 
@@ -20,7 +21,8 @@ def run(command: list[str], cwd: Path) -> None:
 def main() -> None:
     if not FRONTEND_DIST.exists():
         print("Frontend build not found. Building the app now...")
-        run(["npm", "run", "build"], FRONTEND_DIR)
+        npm = "npm.cmd" if platform.system() == "Windows" else "npm"
+        run([npm, "run", "build"], FRONTEND_DIR)
 
     print("Starting the desktop dashboard...")
     if not getattr(sys, "frozen", False):
