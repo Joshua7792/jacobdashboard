@@ -402,46 +402,42 @@ def build_tracker(wb: Workbook) -> None:
     dv_worker.add(f"B3:B{last_row}")
     ws.add_data_validation(dv_worker)
 
-    # Conditional formatting on cert matrix
-    matrix_range = f"C3:{get_column_letter(last_col)}{last_row}"
+    # Conditional formatting on cert matrix using the 1-year renewal scheme.
+    # Apply to a wide static range so future cert columns auto-inherit the rules.
+    # CF fills must use bgColor (not fgColor) for Excel to render the color.
+    # Empty cells stay blank (no missing-cert rule).
+    matrix_range = f"C3:AZ{last_row}"
+    red_fill = PatternFill(bgColor="F8CBAD", fill_type="solid")
+    yellow_fill = PatternFill(bgColor="FFE699", fill_type="solid")
+    green_fill = PatternFill(bgColor="C6EFCE", fill_type="solid")
 
-    # Missing (empty cells where worker exists) -> red
-    red_fill = PatternFill("solid", fgColor="F8CBAD")
+    # 1) <= 30 days remaining (or past 1-year anniversary) -> RED.
     ws.conditional_formatting.add(
         matrix_range,
-        FormulaRule(formula=[f'AND($B3<>"",C3="")'], fill=red_fill, stopIfTrue=False),
+        FormulaRule(
+            formula=['AND(C3<>"",ISNUMBER(C3),(EDATE(C3,12)-TODAY())<=30)'],
+            fill=red_fill, stopIfTrue=True,
+        ),
     )
-
-    # Expired -> orange (cert older than validity years from Certifications sheet)
-    orange_fill = PatternFill("solid", fgColor="F4B183")
-    expired_formula = (
-        'AND(C3<>"",'
-        'ISNUMBER(C3),'
-        'VLOOKUP(C$2,Certifications!$A:$C,3,FALSE)>0,'
-        'EDATE(C3,VLOOKUP(C$2,Certifications!$A:$C,3,FALSE)*12)<TODAY())'
-    )
+    # 2) 31-60 days remaining -> YELLOW.
     ws.conditional_formatting.add(
-        matrix_range, FormulaRule(formula=[expired_formula], fill=orange_fill, stopIfTrue=False)
+        matrix_range,
+        FormulaRule(
+            formula=[(
+                'AND(C3<>"",ISNUMBER(C3),'
+                '(EDATE(C3,12)-TODAY())>30,'
+                '(EDATE(C3,12)-TODAY())<=60)'
+            )],
+            fill=yellow_fill, stopIfTrue=True,
+        ),
     )
-
-    # Expiring within 60 days -> yellow
-    yellow_fill = PatternFill("solid", fgColor="FFE699")
-    expiring_formula = (
-        'AND(C3<>"",'
-        'ISNUMBER(C3),'
-        'VLOOKUP(C$2,Certifications!$A:$C,3,FALSE)>0,'
-        'EDATE(C3,VLOOKUP(C$2,Certifications!$A:$C,3,FALSE)*12)>=TODAY(),'
-        'EDATE(C3,VLOOKUP(C$2,Certifications!$A:$C,3,FALSE)*12)<=TODAY()+60)'
-    )
+    # 3) > 60 days remaining -> GREEN.
     ws.conditional_formatting.add(
-        matrix_range, FormulaRule(formula=[expiring_formula], fill=yellow_fill, stopIfTrue=False)
-    )
-
-    # Current (has date) -> green
-    green_fill = PatternFill("solid", fgColor="C6EFCE")
-    current_formula = 'AND(C3<>"",ISNUMBER(C3))'
-    ws.conditional_formatting.add(
-        matrix_range, FormulaRule(formula=[current_formula], fill=green_fill, stopIfTrue=False)
+        matrix_range,
+        FormulaRule(
+            formula=['AND(C3<>"",ISNUMBER(C3),(EDATE(C3,12)-TODAY())>60)'],
+            fill=green_fill, stopIfTrue=True,
+        ),
     )
 
     # Column widths
@@ -450,16 +446,13 @@ def build_tracker(wb: Workbook) -> None:
         widths[idx] = 14
     autosize(ws, widths)
 
-    tracker_table = Table(
-        displayName="TrackerTable",
-        ref=f"A2:{get_column_letter(last_col)}{last_row}",
-    )
-    tracker_table.tableStyleInfo = TableStyleInfo(
-        name="TableStyleMedium2",
-        showRowStripes=False,
-        showColumnStripes=False,
-    )
-    ws.add_table(tracker_table)
+    # NOTE: We intentionally do NOT create an Excel Table on the Tracker.
+    # The Tracker's column count grows over time (every new cert added by
+    # import_pdf.py adds another column), and Excel Tables require their ref
+    # and tableColumns metadata to stay in lock-step with the actual data,
+    # which is brittle. AutoFilter gives the same column-header dropdowns
+    # without the corruption risk.
+    ws.auto_filter.ref = f"A2:{get_column_letter(last_col)}{last_row}"
 
     ws.freeze_panes = "C3"
     ws.sheet_view.showGridLines = False

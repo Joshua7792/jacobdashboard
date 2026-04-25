@@ -25,12 +25,13 @@ from typing import Optional
 import pdfplumber
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl import load_workbook
-from openpyxl.styles import PatternFill
+from openpyxl.styles import Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKBOOK_PATH = ROOT / "Contractor Certifications Tracker.xlsx"
+# WORKBOOK_PATH = ROOT / "Contractor Certifications Tracker Demo.xlsx"
 
 
 # --- Normalization ---
@@ -79,7 +80,10 @@ PAGE2_HEADER_ALIASES = {
     "concrete mansory": "Concrete & Masonry",
 }
 
-DATE_RE = re.compile(r"\d{1,2}/\d{1,2}/\d{4}")
+# Matches either a plain "m/d/yyyy" date or a day-range form like
+# "2/5-9/2023" or "6/5-8-2023" where we want the last day of the range.
+DATE_RE = re.compile(r"\d{1,2}/\d{1,2}(?:-\d{1,2})?[-/]\d{2,4}")
+DATE_RANGE_RE = re.compile(r"^\s*(\d{1,2})/(\d{1,2})-(\d{1,2})[-/](\d{2,4})\s*$")
 
 
 def parse_date(raw: Optional[str]) -> Optional[date]:
@@ -89,6 +93,14 @@ def parse_date(raw: Optional[str]) -> Optional[date]:
     if not s:
         return None
     s = s.replace("\n", " ").strip()
+
+    # Collapse day-range forms ("2/5-9/2023", "6/5-8-2023") to a single date by
+    # taking the LAST day of the range. Then let the standard parsing handle it.
+    range_match = DATE_RANGE_RE.match(s)
+    if range_match:
+        month, _start_day, end_day, year = range_match.groups()
+        s = f"{month}/{end_day}/{year}"
+
     slash_compact = re.sub(r"\s+", "", s) if "/" in s else None
 
     candidates = [s]
@@ -432,7 +444,15 @@ def extract_additional_training_page(page: pdfplumber.page.Page) -> dict[str, di
         raw_label = " ".join(part["label"] for part in group["parts"])
         canonical = canonicalize_page2_header(raw_label)
         if not canonical:
-            continue
+            # Unknown page-2 training. Keep it anyway so import_pdf can
+            # auto-register it as a new certification.
+            cleaned = raw_label.replace("\n", " ")
+            cleaned = re.sub(r"([A-Za-z])(\d)", r"\1 \2", cleaned)
+            cleaned = re.sub(r"(\d)([A-Za-z])", r"\1 \2", cleaned)
+            cleaned = re.sub(r"\s+", " ", cleaned).strip()
+            if not cleaned:
+                continue
+            canonical = cleaned
         column_defs.append(
             {
                 "name": canonical,
@@ -609,13 +629,31 @@ def find_row(ws: Worksheet, key_col: int, target_norm: str, start: int = 2, limi
     return None
 
 
+CERT_FORMULA_RE = re.compile(r"^\s*=\s*Certifications!\s*\$?A\$?(\d+)\s*$", re.IGNORECASE)
+
+
 def tracker_cert_columns(ws: Worksheet) -> dict[str, int]:
-    """Map cert name (as in Tracker header row 2) -> column index."""
-    mapping = {}
+    """Map cert name (as in Tracker header row 2) -> column index.
+
+    Handles both literal text headers and formula headers like
+    =Certifications!A15 by resolving the formula back to the cert name.
+    """
+    mapping: dict[str, int] = {}
+    ws_certs = ws.parent["Certifications"] if "Certifications" in ws.parent.sheetnames else None
+
     for col in range(3, ws.max_column + 1):
         val = ws.cell(row=2, column=col).value
-        if val:
-            mapping[val] = col
+        if val in (None, ""):
+            continue
+        if ws_certs is not None and isinstance(val, str):
+            m = CERT_FORMULA_RE.match(val)
+            if m:
+                certs_row = int(m.group(1))
+                resolved = ws_certs.cell(row=certs_row, column=1).value
+                if resolved:
+                    mapping[str(resolved)] = col
+                    continue
+        mapping[str(val)] = col
     return mapping
 
 
@@ -660,6 +698,410 @@ def add_tracker_conditional_formatting(
     ws.conditional_formatting.add(
         matrix_range, FormulaRule(formula=[current_formula], fill=green_fill, stopIfTrue=False)
     )
+
+
+def apply_renewal_color_rules(ws_tracker: Worksheet) -> None:
+    """Replace the Tracker's conditional formatting with 1-year renewal rules.
+
+    A cert tile is colored only when it has a date. Empty cells stay blank.
+    Coloring is based on days remaining until the cert's 1-year anniversary
+    (cert_date + 12 months):
+      - GREEN  : more than 60 days remaining
+      - YELLOW : 31 to 60 days remaining
+      - RED    : 30 days or fewer remaining, or anniversary already passed
+
+    Applied to a wide static range (C3:AZ200) so future cert columns inherit
+    the rules without re-running this helper.
+    """
+    # Clear existing CF rules in-place so the workbook's dxfs registry is
+    # preserved (replacing the whole ConditionalFormattingList orphans the
+    # rule fills, which makes Excel render cells without color).
+    ws_tracker.conditional_formatting._cf_rules.clear()
+
+    last_row = max(ws_tracker.max_row, 200)
+    matrix_range = f"C3:AZ{last_row}"
+
+    # CF differential fills use bgColor (not fgColor) for the actual cell color.
+    green_fill = PatternFill(bgColor="C6EFCE", fill_type="solid")
+    yellow_fill = PatternFill(bgColor="FFE699", fill_type="solid")
+    red_fill = PatternFill(bgColor="F8CBAD", fill_type="solid")
+
+    # 1) Has a date and <= 30 days remaining (or anniversary already passed) -> RED.
+    ws_tracker.conditional_formatting.add(
+        matrix_range,
+        FormulaRule(
+            formula=['AND(C3<>"",ISNUMBER(C3),(EDATE(C3,12)-TODAY())<=30)'],
+            fill=red_fill,
+            stopIfTrue=True,
+        ),
+    )
+
+    # 2) Has a date and 31-60 days remaining -> YELLOW.
+    ws_tracker.conditional_formatting.add(
+        matrix_range,
+        FormulaRule(
+            formula=[(
+                'AND(C3<>"",ISNUMBER(C3),'
+                '(EDATE(C3,12)-TODAY())>30,'
+                '(EDATE(C3,12)-TODAY())<=60)'
+            )],
+            fill=yellow_fill,
+            stopIfTrue=True,
+        ),
+    )
+
+    # 3) Has a date and more than 60 days remaining -> GREEN.
+    ws_tracker.conditional_formatting.add(
+        matrix_range,
+        FormulaRule(
+            formula=['AND(C3<>"",ISNUMBER(C3),(EDATE(C3,12)-TODAY())>60)'],
+            fill=green_fill,
+            stopIfTrue=True,
+        ),
+    )
+    # Empty cells: no rule -> no color (intentional, per user request).
+
+
+def ensure_tracker_column(ws_tracker: Worksheet, cert_name: str) -> bool:
+    """Append cert_name as a new column on the Tracker sheet if missing.
+
+    Inherits styling from the current last column, extends the Additional
+    Training banner merge, and adds conditional-formatting rules for just the
+    new column. Returns True when a new column was added.
+    """
+    if cert_name in tracker_cert_columns(ws_tracker):
+        return False
+
+    last_existing_col = ws_tracker.max_column
+    header_template = ws_tracker.cell(row=2, column=last_existing_col)
+    data_template = ws_tracker.cell(row=3, column=last_existing_col)
+    banner_start = next(
+        (col for col in range(3, ws_tracker.max_column + 1)
+         if ws_tracker.cell(row=1, column=col).value == "Additional Training"),
+        3,
+    )
+    banner_template = ws_tracker.cell(row=1, column=banner_start)
+    last_row = max(ws_tracker.max_row, 200)
+
+    new_col = last_existing_col + 1
+    header_cell = ws_tracker.cell(row=2, column=new_col, value=cert_name)
+    header_cell._style = copy(header_template._style)
+
+    width = ws_tracker.column_dimensions[get_column_letter(last_existing_col)].width
+    ws_tracker.column_dimensions[get_column_letter(new_col)].width = width or 14
+
+    for row in range(3, last_row + 1):
+        cell = ws_tracker.cell(row=row, column=new_col)
+        cell._style = copy(data_template._style)
+        cell.number_format = "mm/dd/yyyy"
+
+    for merged_range in list(ws_tracker.merged_cells.ranges):
+        if (
+            merged_range.min_row == 1
+            and merged_range.max_row == 1
+            and merged_range.min_col == banner_start
+        ):
+            ws_tracker.unmerge_cells(str(merged_range))
+    ws_tracker.merge_cells(
+        start_row=1, start_column=banner_start, end_row=1, end_column=new_col,
+    )
+    banner_cell = ws_tracker.cell(row=1, column=banner_start, value="Additional Training")
+    banner_cell._style = copy(banner_template._style)
+
+    add_tracker_conditional_formatting(ws_tracker, new_col, new_col, last_row)
+    return True
+
+
+def ensure_catalog_row(
+    ws_certs: Worksheet, cert_name: str, category: str = "Additional Training", validity: int = 0,
+) -> bool:
+    """Add cert_name to the Certifications sheet if it isn't there yet."""
+    existing = {
+        normalize(str(row[0]))
+        for row in ws_certs.iter_rows(min_row=2, max_col=1, values_only=True)
+        if row[0]
+    }
+    if normalize(cert_name) in existing:
+        return False
+    row = first_empty_row(ws_certs, key_col=1, start=2, limit=max(ws_certs.max_row + 50, 200))
+    ws_certs.cell(row=row, column=1, value=cert_name)
+    ws_certs.cell(row=row, column=2, value=category)
+    ws_certs.cell(row=row, column=3, value=validity)
+    return True
+
+
+def register_new_certification(
+    ws_certs: Worksheet,
+    ws_tracker: Worksheet,
+    cert_name: str,
+    category: str = "Additional Training",
+    validity: int = 0,
+) -> bool:
+    """Add the cert to both Certifications catalog and Tracker columns."""
+    added_catalog = ensure_catalog_row(ws_certs, cert_name, category, validity)
+    added_column = ensure_tracker_column(ws_tracker, cert_name)
+    return added_catalog or added_column
+
+
+# --- Cross-sheet sync ---
+DASHBOARD_DATA_START_ROW = 9  # first row beneath the Compliance sub-header
+
+
+def get_certifications_list(ws_certs: Worksheet) -> list[tuple[int, str, str]]:
+    """Return [(row, name, category)] for every non-empty row in Certifications."""
+    certs: list[tuple[int, str, str]] = []
+    for r in range(2, ws_certs.max_row + 1):
+        name = ws_certs.cell(r, 1).value
+        if name in (None, ""):
+            continue
+        category = ws_certs.cell(r, 2).value or "Additional Training"
+        certs.append((r, str(name), str(category)))
+    return certs
+
+
+def _find_tracker_col_for_cert_row(ws_tracker: Worksheet, certs_row: int) -> Optional[int]:
+    """Return the Tracker column whose row-2 formula points to Certifications!A{certs_row}."""
+    target = certs_row
+    for c in range(3, ws_tracker.max_column + 1):
+        v = ws_tracker.cell(2, c).value
+        if isinstance(v, str):
+            m = CERT_FORMULA_RE.match(v)
+            if m and int(m.group(1)) == target:
+                return c
+    return None
+
+
+def _find_tracker_col_literal(ws_tracker: Worksheet, cert_name: str) -> Optional[int]:
+    """Return the Tracker column whose row-2 value is the LITERAL cert_name (no formula)."""
+    target_norm = normalize(cert_name)
+    for c in range(3, ws_tracker.max_column + 1):
+        v = ws_tracker.cell(2, c).value
+        if not isinstance(v, str) or v.startswith("="):
+            continue
+        if normalize(v) == target_norm:
+            return c
+    return None
+
+
+def sync_tracker_headers(ws_certs: Worksheet, ws_tracker: Worksheet) -> dict[str, list[str]]:
+    """Reconcile Tracker row-2 headers with Certifications.
+
+    Steps:
+      1. Any literal Tracker header whose name is not yet in Certifications is
+         added to Certifications as Additional Training / validity 0.
+      2. For every Certifications row, ensure a Tracker column exists and its
+         header is the formula =Certifications!A{row} (propagates renames).
+    """
+    actions = {"new_certs_from_tracker": [], "new_tracker_cols": [], "converted_to_formula": []}
+
+    # Step 1: literal headers not in the catalog -> register them.
+    certs = get_certifications_list(ws_certs)
+    known_norm = {normalize(name) for _row, name, _cat in certs}
+    for c in range(3, ws_tracker.max_column + 1):
+        v = ws_tracker.cell(2, c).value
+        if not isinstance(v, str) or not v or v.startswith("="):
+            continue
+        if normalize(v) in known_norm:
+            continue
+        new_row = first_empty_row(
+            ws_certs, key_col=1, start=2, limit=max(ws_certs.max_row + 50, 200)
+        )
+        ws_certs.cell(new_row, 1, value=v)
+        ws_certs.cell(new_row, 2, value="Additional Training")
+        ws_certs.cell(new_row, 3, value=0)
+        actions["new_certs_from_tracker"].append(v)
+
+    # Reload cert list after Step 1 additions.
+    certs = get_certifications_list(ws_certs)
+
+    # Step 2: for each Certifications row, wire a Tracker column to it.
+    for certs_row, name, _cat in certs:
+        if _find_tracker_col_for_cert_row(ws_tracker, certs_row) is not None:
+            continue
+        literal_col = _find_tracker_col_literal(ws_tracker, name)
+        if literal_col is not None:
+            ws_tracker.cell(2, literal_col, value=f"=Certifications!A{certs_row}")
+            actions["converted_to_formula"].append(name)
+        else:
+            ensure_tracker_column(ws_tracker, name)
+            new_col = ws_tracker.max_column
+            ws_tracker.cell(2, new_col, value=f"=Certifications!A{certs_row}")
+            actions["new_tracker_cols"].append(name)
+
+    return actions
+
+
+def sync_dashboard_rows(ws_certs: Worksheet, ws_dashboard: Worksheet) -> dict[str, list[str]]:
+    """Reconcile Dashboard compliance rows with Certifications.
+
+    Adds a Dashboard row per cert (if missing) and wires name/category cells
+    back to Certifications via formulas so renames propagate. The count
+    formula uses INDEX/MATCH to find the right Tracker column by name.
+    """
+    actions = {"added_dashboard_rows": [], "converted_to_formula": []}
+    certs = get_certifications_list(ws_certs)
+
+    # Map existing Dashboard rows: by Certifications formula ref, then by literal name.
+    by_cert_row: dict[int, int] = {}
+    literal_rows: dict[str, int] = {}
+    used_rows: set[int] = set()
+    end = max(DASHBOARD_DATA_START_ROW, ws_dashboard.max_row) + 5
+    for r in range(DASHBOARD_DATA_START_ROW, end):
+        v = ws_dashboard.cell(r, 1).value
+        if v in (None, ""):
+            continue
+        used_rows.add(r)
+        if isinstance(v, str):
+            m = CERT_FORMULA_RE.match(v)
+            if m:
+                by_cert_row[int(m.group(1))] = r
+                continue
+            literal_rows[normalize(v)] = r
+
+    def _next_free_row() -> int:
+        r = DASHBOARD_DATA_START_ROW
+        while r in used_rows:
+            r += 1
+        used_rows.add(r)
+        return r
+
+    thin = Side(style="thin", color="BFBFBF")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for certs_row, name, _cat in certs:
+        if certs_row in by_cert_row:
+            dashboard_row = by_cert_row[certs_row]
+            is_new = False
+        elif normalize(name) in literal_rows:
+            dashboard_row = literal_rows[normalize(name)]
+            is_new = False
+            actions["converted_to_formula"].append(name)
+        else:
+            dashboard_row = _next_free_row()
+            is_new = True
+            actions["added_dashboard_rows"].append(name)
+
+        r = dashboard_row
+        ws_dashboard.cell(r, 1, value=f"=Certifications!A{certs_row}")
+        ws_dashboard.cell(r, 2, value=f"=Certifications!B{certs_row}")
+        ws_dashboard.cell(r, 3, value=(
+            f"=IFERROR(COUNTA(INDEX(Tracker!$C$3:$AZ$200,0,"
+            f"MATCH($A{r},Tracker!$C$2:$AZ$2,0))),0)"
+        ))
+        ws_dashboard.cell(r, 4, value=f"=COUNTA(Workers!A$2:A$200)-C{r}")
+        pct = ws_dashboard.cell(r, 5, value=f"=IFERROR(C{r}/(C{r}+D{r}),0)")
+        pct.number_format = "0.0%"
+        bar = ws_dashboard.cell(r, 6, value=f'=REPT("■",ROUND(E{r}*20,0))')
+        if is_new:
+            bar.font = Font(color="2E7D32", size=11)
+            for col in range(1, 7):
+                ws_dashboard.cell(r, col).border = border
+
+    return actions
+
+
+def _replace_tracker_table_with_autofilter(ws_tracker: Worksheet) -> bool:
+    """Drop the formal Excel Table on the Tracker and use AutoFilter instead.
+
+    An Excel Table requires its ref and tableColumns metadata to stay in sync
+    with the actual data range. When we add cert columns dynamically that
+    metadata gets stale and Excel flags the workbook as corrupted ("We found a
+    problem with some content..."). AutoFilter gives users the same
+    column-header filter dropdowns without the fragility.
+    """
+    changed = False
+    if "TrackerTable" in ws_tracker.tables:
+        del ws_tracker.tables["TrackerTable"]
+        changed = True
+
+    last_row = max(ws_tracker.max_row, 200)
+    last_col = max(ws_tracker.max_column, 26)
+    new_ref = f"A2:{get_column_letter(last_col)}{last_row}"
+    if ws_tracker.auto_filter.ref != new_ref:
+        ws_tracker.auto_filter.ref = new_ref
+        changed = True
+    return changed
+
+
+def _resync_certifications_table(ws_certs: Worksheet) -> bool:
+    """Keep the CertificationsTable ref covering all populated cert rows.
+
+    Adding new certs grows the sheet downward; if the Table's ref is shorter
+    than the data, Excel can flag the file. We just stretch the existing ref to
+    include the current populated range (no column changes needed since
+    Certifications has fixed columns A-D).
+    """
+    name = "CertificationsTable"
+    if name not in ws_certs.tables:
+        return False
+    tbl = ws_certs.tables[name]
+    try:
+        from openpyxl.utils import range_boundaries
+        min_col, min_row, max_col, max_row = range_boundaries(tbl.ref)
+    except Exception:
+        return False
+
+    target_last_row = max(ws_certs.max_row, max_row, 60)
+    if target_last_row <= max_row:
+        return False
+    tbl.ref = (
+        f"{get_column_letter(min_col)}{min_row}:"
+        f"{get_column_letter(max_col)}{target_last_row}"
+    )
+    return True
+
+
+def sync_workbook(wb) -> dict[str, list[str]]:
+    """Reconcile Certifications, Tracker, and Dashboard so they share names.
+
+    Certifications is the source of truth. Tracker row-2 headers and Dashboard
+    columns A/B become formulas referencing Certifications, so renames
+    propagate automatically.
+    """
+    ws_certs = wb["Certifications"]
+    ws_tracker = wb["Tracker"]
+    ws_dashboard = wb["Dashboard"]
+
+    result: dict[str, list[str]] = {}
+    tracker_actions = sync_tracker_headers(ws_certs, ws_tracker)
+    dashboard_actions = sync_dashboard_rows(ws_certs, ws_dashboard)
+
+    # After any structural changes, keep Excel Tables consistent so the file
+    # opens cleanly without "we found a problem with some content..." prompts.
+    if _replace_tracker_table_with_autofilter(ws_tracker):
+        result["tracker.table_swapped_for_autofilter"] = ["TrackerTable removed; AutoFilter set"]
+    if _resync_certifications_table(ws_certs):
+        result["certifications.table_extended"] = [
+            f"CertificationsTable ref now covers row {ws_certs.max_row}"
+        ]
+
+    # Re-apply the 1-year renewal color rules over the whole Tracker matrix.
+    apply_renewal_color_rules(ws_tracker)
+    result["tracker.renewal_rules_applied"] = [
+        ">90d=green | 31-90d=yellow | <=30d or past=red | empty=red"
+    ]
+
+    # Prefix keys so Tracker and Dashboard actions stay separate even when they
+    # share a name like "converted_to_formula".
+    for key, items in tracker_actions.items():
+        if items:
+            result[f"tracker.{key}"] = list(items)
+    for key, items in dashboard_actions.items():
+        if items:
+            result[f"dashboard.{key}"] = list(items)
+    return result
+
+
+def clean_cert_header(raw: str) -> str:
+    """Normalize a raw PDF cert header into a usable catalog name."""
+    cleaned = raw.replace("\n", " ")
+    cleaned = re.sub(r"([A-Za-z])(\d)", r"\1 \2", cleaned)
+    cleaned = re.sub(r"(\d)([A-Za-z])", r"\1 \2", cleaned)
+    # OSHA course codes often come in as "OSHA 30511" (spaces lost between the
+    # level and the course number). Split those into "OSHA 30 511".
+    cleaned = re.sub(r"\bOSHA\s+(\d{2})(\d{3})\b", r"OSHA \1 \2", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
 
 
 def ensure_required_certifications(ws_certs: Worksheet, ws_tracker: Worksheet) -> list[str]:
@@ -772,6 +1214,46 @@ def import_pdf(pdf_path: Path) -> dict:
     alias_map = build_cert_alias_map(ws_certs)
     cert_columns = tracker_cert_columns(ws_tracker)
 
+    # Auto-register any cert header in the PDF that the catalog doesn't know yet.
+    # Defaults: Additional Training, validity=0 (no expiration). The user can
+    # edit the validity on the Certifications sheet later.
+    pdf_headers: set[str] = set()
+    for worker_certs in workers_data.values():
+        pdf_headers.update(worker_certs.keys())
+
+    def _exact_known(name: str) -> bool:
+        """Is `name` an exact (normalized) match for a cert already in the catalog?
+        Deliberately does NOT use the fuzzy token-overlap fallback, so a new cert
+        like 'OSHA 30 501' does not get swallowed by existing 'OSHA 30'.
+        """
+        key = normalize(name)
+        if not key:
+            return False
+        canonical = alias_map.get(key)
+        if canonical is None:
+            compact = normalize(re.sub(r"[()]", "", key))
+            canonical = alias_map.get(compact)
+        return canonical is not None and canonical in cert_columns
+
+    auto_added: list[str] = []
+    for header in sorted(pdf_headers):
+        if _exact_known(header):
+            continue
+        cleaned = clean_cert_header(header)
+        if not cleaned or _exact_known(cleaned):
+            continue
+        if register_new_certification(ws_certs, ws_tracker, cleaned):
+            auto_added.append(cleaned)
+
+    # Sync Certifications <-> Tracker <-> Dashboard so any cert added in any
+    # sheet appears in all three, and Tracker headers + Dashboard name/category
+    # cells become formulas that track Certifications renames automatically.
+    sync_actions = sync_workbook(wb)
+
+    if auto_added or sync_actions:
+        alias_map = build_cert_alias_map(ws_certs)
+        cert_columns = tracker_cert_columns(ws_tracker)
+
     stats = {
         "contractor": contractor,
         "primary_contact": primary_contact,
@@ -782,6 +1264,8 @@ def import_pdf(pdf_path: Path) -> dict:
         "certs_updated": 0,
         "certs_unchanged": 0,
         "cert_columns_added": added_cert_columns,
+        "new_certs_added": auto_added,
+        "sync_actions": sync_actions,
         "unmatched_headers": set(),
     }
 
@@ -852,10 +1336,42 @@ def import_pdf(pdf_path: Path) -> dict:
     return stats
 
 
+def _run_sync_only() -> int:
+    if not WORKBOOK_PATH.exists():
+        print(f"Workbook not found at {WORKBOOK_PATH}.")
+        return 2
+    try:
+        wb = load_workbook(WORKBOOK_PATH)
+    except PermissionError:
+        print(
+            "[ERROR] Permission denied — the Excel file is open.\n"
+            f"        Close '{WORKBOOK_PATH.name}' in Excel and try again."
+        )
+        return 2
+
+    actions = sync_workbook(wb)
+    wb.save(WORKBOOK_PATH)
+    print(f"Sync complete: {WORKBOOK_PATH}")
+    if not actions:
+        print("  (no changes needed — everything already in sync)")
+        return 0
+    for key, items in actions.items():
+        if not items:
+            continue
+        label = key.replace("_", " ").capitalize()
+        print(f"  {label}:")
+        for item in items:
+            print(f"    - {item}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print("Usage: python import_pdf.py <file.pdf> [more.pdf ...]")
+        print("       python import_pdf.py --sync   # reconcile sheets only")
         return 1
+    if "--sync" in argv[1:]:
+        return _run_sync_only()
     if not WORKBOOK_PATH.exists():
         print(f"Workbook not found at {WORKBOOK_PATH}. Run tools/build_cert_tracker.py first.")
         return 2
@@ -890,6 +1406,10 @@ def main(argv: list[str]) -> int:
         print(f"  Workers existing:  {stats['workers_existing']}")
         if stats["cert_columns_added"]:
             print(f"  Cert columns added:{' ' if len(stats['cert_columns_added']) < 10 else ''}{', '.join(stats['cert_columns_added'])}")
+        if stats.get("new_certs_added"):
+            print(f"  New certs auto-added (Additional Training, 0-yr validity):")
+            for name in stats["new_certs_added"]:
+                print(f"       + {name}")
         print(f"  Cert dates set:    {stats['certs_updated']}")
         print(f"  Cert dates kept:   {stats['certs_unchanged']} (already newer or same)")
         if stats["unmatched_headers"]:

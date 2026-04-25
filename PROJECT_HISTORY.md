@@ -77,3 +77,26 @@ Completed cleanup:
 - Removed the old company/contractor numeric database fields from `workforce_dashboard.db`.
 - Created a temporary SQLite backup before the schema edit, then deleted the backup after verification because the user requested the old scope be fully removed.
 - Verified backend Python compilation and frontend production build.
+
+### Excel Demo Workbook
+
+Request:
+
+- Before using the tracker for real work, create a safe way to test the Excel workflow with dummy contractors and workers.
+
+Completed:
+
+- Created `cert_tracker/Contractor Certifications Tracker - Demo.xlsx` with 3 dummy contractors and 9 dummy workers.
+- Kept `cert_tracker/Contractor Certifications Tracker.xlsx` as the live workbook name used by `Import PDF.bat`.
+- Refreshed the live workbook Tracker conditional-formatting rules without changing contractor, worker, or cert-date data.
+- Added the missing `Job Titles` helper sheet to the live and demo workbooks.
+- Updated `build_cert_tracker.py` and `import_pdf.py` so future Tracker conditional-formatting rules are mutually exclusive:
+  - Red means missing.
+  - Orange means expired.
+  - Yellow means expiring within 60 days.
+  - Green means current/valid or no-expiration training with a date.
+
+Notes:
+
+- The demo workbook intentionally includes current, expiring-soon, expired, and blank/missing cells so the user can review the visual behavior before entering more real data.
+- Adding an extra `Demo Guide` sheet caused workbook saves to hang in testing, so the demo guidance was added to the existing Instructions sheet instead.

@@ -29,6 +29,11 @@ Tracker workbook:
 
 - `cert_tracker/Contractor Certifications Tracker.xlsx`
 
+Supporting workbook copies:
+
+- `cert_tracker/Contractor Certifications Tracker - Real Data.xlsx`: safekeeping copy created before demo/testing tweaks.
+- `cert_tracker/Contractor Certifications Tracker - Demo.xlsx`: dummy contractors/workers for testing colors, formulas, and workflow without touching real data.
+
 Automation files:
 
 - `cert_tracker/scripts/import_pdf.py`
@@ -53,6 +58,7 @@ What it does today:
 - Uses newer-wins date logic so an older PDF date does not overwrite a newer workbook date.
 - Writes primary contact only when the contractor contact cell is blank.
 - Adds missing certification rows/columns when the PDF includes a recognized training item that is not already in the workbook.
+- Tracker color rules are intended to be mutually exclusive: missing is red, expired is orange, expiring soon is yellow, and current/valid is green.
 
 Important safety rule:
 
