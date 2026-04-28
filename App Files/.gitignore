@@ -6,4 +6,6 @@ build/
 dist/
 frontend/dist/
 frontend/node_modules/
+*-dev.log
+*-dev.err.log
 .codex
