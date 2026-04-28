@@ -1,340 +1,213 @@
 # Project Handoff
 
-Last updated: April 27, 2026
+Last updated: April 28, 2026
 
-Use this file as the **current** project status snapshot for ChatGPT, Codex in
-VS Code, or any future coding session. Longer conversation notes and decision
-history belong in `PROJECT_HISTORY.md`. Per-session detail logs live in
-`CHAT_LOG/`.
+Authoritative status snapshot for the next coding session. The verbatim
+conversation transcript lives in `CHAT_LOG/*.raw.jsonl`; this file is the
+"what does the app look like today and what's next" summary.
 
 ## Current Goal
 
 Build a **personal visual dashboard** that reads the Excel certification
-workbook and renders it as rich, interactive widgets — KPIs, action lists, and
-a workers × certs heatmap. Excel stays the source of truth (you edit there,
-the app reflects on Refresh).
+workbook and renders it as rich, interactive screens — KPIs, action lists,
+contractor scorecards, worker drill-downs, cert coverage charts, and a
+workers × certifications heatmap. Excel stays the source of truth: the
+user edits there, hits **Refresh** in the app, and the dashboard reflects
+the change.
 
-The active project focus is:
-
-- A living Excel tracker for contractor workers, required training,
-  certification dates, and PDF imports.
-- A read-only React/FastAPI dashboard that visualizes the workbook —
-  "personal Power BI", but tightly tailored to HSE compliance tracking.
-
-Out of scope for now:
+Out of scope:
 
 - Money, cost, payment, or purchasing workflows.
 - Multi-user editing or cloud sync.
-- External reporting integrations (Power BI, etc.).
+- Any database. The workbook IS the database.
 
-## Repo Areas
-
-- `cert_tracker/` — Excel workflow + PDF import automation. Source of truth.
-- `App Files/` — Local dashboard app (FastAPI + React).
-- `.claude/settings.local.json` — Project-scoped Claude Code permissions
-  (gitignored). Currently grants `Bash(*)` auto-approve.
-
----
-
-## Certification Excel Tracker
-
-### Workbooks
-
-- `cert_tracker/Contractor Certifications Tracker.xlsx` — **live workbook**
-  (real Cornerstone + GeoEnviroTech data). The everyday import flow
-  (`Import PDF.bat`) reads/writes this file by default.
-- `cert_tracker/Contractor Certifications Tracker Demo.xlsx` — dummy data for
-  testing colors, formulas, and workflow without touching live records.
-  Repopulated reproducibly via `populate_demo.py`.
-
-### Automation files
-
-- `cert_tracker/Import PDF.bat` — drag-and-drop launcher.
-- `cert_tracker/scripts/import_pdf.py` — PDF reader + workbook updater +
-  cross-sheet sync.
-- `cert_tracker/scripts/build_cert_tracker.py` — workbook scaffolder
-  (safety-guarded, refuses to overwrite an existing workbook unless `--force`).
-- `cert_tracker/scripts/populate_demo.py` — dummy-data populator for the demo
-  workbook (also safety-guarded).
-
-### Workbook structure
-
-7 sheets: `Instructions`, `Dashboard`, `Certifications`, `Contractors`,
-`Job Titles`, `Workers`, `Tracker`.
-
-- **Certifications is the source of truth for cert names, categories, and
-  validity years.**
-- **Tracker row 2 headers** are formulas like `=Certifications!A15` so renames
-  in Certifications propagate to the Tracker automatically.
-- **Dashboard compliance rows** (cols A & B) use the same formula pattern;
-  count formulas use `INDEX/MATCH` against the Tracker so they survive column
-  reordering.
-
-### Conditional formatting on Tracker (1-year renewal rules)
-
-| Days remaining until 1-year anniversary | Color |
-|---|---|
-| > 60 | 🟢 green |
-| 31–60 | 🟡 yellow |
-| ≤ 30 OR past anniversary | 🔴 red |
-| (empty cell) | (no color, intentional) |
-
-- Range: `C3:AZ200` so future cert columns inherit automatically.
-- Implemented as 3 rules with `stopIfTrue=True` and `bgColor` (not `fgColor`)
-  for the differential format fills. **`bgColor` was the bug fix when colors
-  weren't rendering.**
-- The `Tracker` no longer has a formal Excel Table object (it caused
-  corruption when columns were added). It uses `AutoFilter` instead.
-
-### What `import_pdf.py` does
-
-1. Extracts contractor name from "Nombre de la compañía contratista: X".
-2. Extracts primary contact from "Certificado por nombre/firma: X" (with
-   signature-line cleanup that rebuilds names scattered across underscores).
-3. Page 1 cert matrix parsed via `extract_tables`.
-4. Page 2 "NOMBRE DEL ADIESTRAMIENTO" section parsed by **word-coordinate
-   bucketing** (rotated headers break normal table extraction).
-5. Three-tier cert name matching: exact alias → substring → token-overlap.
-6. **Auto-registers unknown certs**: any PDF cert header not in the
-   Certifications sheet is added there (Additional Training / 0-year validity
-   default), then propagated into Tracker as a new column and Dashboard as a
-   new row via the sync logic.
-7. Date parsing handles `m/d-d/yyyy` and `m/d-d-yyyy` ranges by taking the
-   last day in the range.
-8. Idempotent: same PDF re-imported produces no duplicates; newer dates win;
-   primary contact is only written when the cell is blank.
-
-### What `--sync` does (run via `python scripts/import_pdf.py --sync`)
-
-Reconciles all three sheets without importing a PDF:
-
-1. Any **literal Tracker header** not in Certifications is added to
-   Certifications, then the Tracker cell is rewritten as a formula reference.
-2. Any **Certifications row** without a matching Tracker column gets one
-   appended with the formula header.
-3. **Dashboard** rows are backfilled for every Certifications row, with
-   formulas for name, category, count (INDEX/MATCH), missing, %, and bar.
-4. Tracker AutoFilter ref is extended.
-5. CertificationsTable ref is extended if rows were added.
-6. Tracker conditional formatting is wiped and re-applied (the 1-year
-   renewal rules above).
-
-`sync_workbook()` is also called automatically at the start of every PDF
-import, so a single `Import PDF.bat` drop fully propagates new data through
-all three sheets.
-
-### Important safety rules
-
-- The live workbook is **production data**. Never overwrite without an
-  explicit user request.
-- `build_cert_tracker.py` refuses to overwrite an existing workbook;
-  `--force` is required for an intentional rebuild from seed data.
-- `populate_demo.py` refuses to wipe the demo workbook unless `--force`
-  is passed.
-- `import_pdf.py` opens with the existing workbook lock; if Excel has the
-  file open, the script reports "Permission denied — close Excel and retry."
-
-### Everyday commands
-
-```powershell
-# Import a PDF (drag onto Import PDF.bat or run from CLI)
-cd cert_tracker
-python scripts\import_pdf.py "path\to\contractor-file.pdf"
-
-# Sync sheets only, without importing a PDF
-python scripts\import_pdf.py --sync
-
-# Diagnostic mode (dumps extracted tables / coordinates)
-$env:DEBUG_IMPORT = "1"
-python scripts\import_pdf.py "path\to\contractor-file.pdf"
-Remove-Item Env:\DEBUG_IMPORT
-
-# Repopulate demo workbook with reproducible dummy data
-python scripts\populate_demo.py --force
-
-# Rebuild from seed (DANGEROUS - wipes the workbook)
-python scripts\build_cert_tracker.py --force
-```
-
----
-
-## Dashboard App
-
-App path: `App Files/`
-
-### Current direction
-
-The app is being rebuilt around an **Excel-as-source-of-truth** model.
-SQLite layer is preserved but no longer the primary data source — new
-endpoints under `/api/excel/*` read directly from the workbook.
-
-### What's in place (Phase 0 — done)
-
-Backend infrastructure to read the workbook and serve its data as JSON.
-
-- `App Files/backend/app/services/excel_reader.py` — parses Contractors,
-  Workers, Certifications, Tracker. Computes per-cell status (green / yellow
-  / red / blank) using the same 1-year renewal rules as the Excel CF.
-  Aggregates per-worker and per-contractor compliance, builds an
-  urgency-sorted action list, cert demand ranking, heatmap payload, and KPIs.
-- `App Files/backend/app/api/excel.py` — FastAPI router with these endpoints:
-  - `GET  /api/excel/health`
-  - `GET  /api/excel/dashboard`
-  - `GET  /api/excel/contractors`
-  - `GET  /api/excel/workers`
-  - `GET  /api/excel/workers/{name}`
-  - `GET  /api/excel/certifications`
-  - `POST /api/excel/refresh`
-- In-memory cache that auto-invalidates on file mtime change (so a save in
-  Excel transparently refreshes the API). `/refresh` forces reload.
-- Frontend `api.ts` + `types.ts` updated with corresponding TypeScript types
-  and fetch methods.
-
-Tested via FastAPI TestClient: all endpoints return 200 with correct data,
-404 on missing workbook / missing worker, 423 on locked file. Cache hit and
-mtime-invalidation confirmed.
-
-### What's in progress (Phase 1)
-
-Visual landing page driven by `/api/excel/dashboard`:
-
-- KPI strip (4 cards: active workers, overall compliance %, urgent count,
-  expiring-soon count)
-- Action list (sortable, filterable by contractor and status)
-- Compliance heatmap (workers × certs grid with colored cells)
-- Refresh button + "Last loaded at HH:MM" indicator
-- File created: `App Files/frontend/src/pages/ExcelDashboardPage.tsx`
-- Not yet wired into routing or styled. CSS classes referenced but not yet
-  added to `App.css`.
-
-### Phases ahead
-
-- **Phase 2** — Tier 2 drill-downs: per-contractor scorecards, worker profile
-  drawer, cert demand chart.
-- **Phase 3** — Filters, search, polish.
-- **Phase 4** — (deferred) Trend snapshots from archived workbooks.
-
-### Frontend files to inspect first
-
-- `App Files/frontend/src/App.tsx`
-- `App Files/frontend/src/components/ShellLayout.tsx`
-- `App Files/frontend/src/pages/ExcelDashboardPage.tsx` (new — Phase 1 WIP)
-- `App Files/frontend/src/pages/DashboardPage.tsx` (legacy SQLite version)
-- `App Files/frontend/src/api.ts`
-- `App Files/frontend/src/types.ts`
-- `App Files/frontend/src/App.css`
-
-### Backend files to inspect first
-
-- `App Files/backend/app/main.py` (router mounting)
-- `App Files/backend/app/api/excel.py` (new — read-only Excel endpoints)
-- `App Files/backend/app/services/excel_reader.py` (new — parser + aggregator)
-- `App Files/backend/app/database.py` (SQLite, legacy)
-
-### Run commands
-
-```powershell
-# Local desktop launcher (builds frontend if needed)
-cd "App Files"
-python launch_dashboard.py
-
-# Dev backend (hot reload)
-cd "App Files\backend"
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8124
-
-# Dev frontend
-cd "App Files\frontend"
-npm run dev
-
-# Build frontend for the desktop launcher
-cd "App Files\frontend"
-npm run build
-```
-
----
-
-## Decisions
-
-- The Excel tracker workflow comes first; dashboard is a visual layer on top.
-- The workbook is the **source of truth**. The dashboard reads it; it does
-  not write back.
-- Repeated PDF imports must be safe and never duplicate workers, contractors,
-  or dates.
-- Build / populate scripts must be safety-guarded against overwriting live
-  data unless `--force` is passed.
-- Cert names live in the Certifications sheet; Tracker headers and Dashboard
-  rows reference Certifications via formulas so renames propagate.
-- Tracker has no formal Excel Table — AutoFilter is used instead because
-  Excel Tables corrupt when columns are added programmatically.
-- 1-year renewal coloring uses `bgColor` (not `fgColor`) for the CF
-  differential format fills.
-- The dashboard app reads from Excel via `/api/excel/*`, with an in-memory
-  cache that auto-invalidates on file mtime change.
-- Bash auto-approve is enabled project-wide via
-  `.claude/settings.local.json` so Claude Code doesn't pause for permission
-  on routine commands.
-- Record meaningful project decisions in `PROJECT_HISTORY.md`.
-
-## Constraints
-
-- Ask before destructive changes outside the agreed scope.
-- Do not delete or overwrite workbook data unless explicitly requested.
-- Do not manually revert unrelated user changes.
-- Be careful with paths containing spaces, especially `App Files/`.
-- Prefer editing source scripts/code over generated workbook edits.
-- Keep the app usable as a local desktop app.
-- Preserve the current visual direction unless the task is explicitly a
-  redesign.
-- When changing APIs, update frontend types and API client calls together.
-- When changing workbook structure, update both builder/import scripts if
-  needed.
-
-## Next Good Tasks
-
-1. **Finish Phase 1**: wire `ExcelDashboardPage` into routing, add CSS for
-   KPI cards / action table / heatmap, replace the legacy Dashboard route,
-   hide stale legacy pages from `ShellLayout` nav, run `npm run build` to
-   confirm no errors.
-2. **Phase 2**: per-contractor scorecard tiles, worker profile drawer, cert
-   demand horizontal bar chart.
-3. **Phase 3**: filter chips (contractor / status / category), global
-   worker-name search, visual polish (animations, color-blind palette,
-   light/dark mode).
-4. Harden `extract_additional_training_page` so page-2 anchoring is dynamic
-   instead of hard-coded Y bands.
-5. Add an `Import Log` sheet recording PDF filename, timestamp, contractor,
-   workers touched, and dates set.
-6. Consider making `Import PDF.bat` produce a clear log file or
-   user-friendly completion message.
-7. Add a root-level README after the dashboard stabilizes.
-
-## Suggested VS Code Codex Prompts
-
-General continuation:
+## Repo Layout
 
 ```text
-Read @HANDOFF.md and @PROJECT_HISTORY.md. Continue from the current project
-state. Start by inspecting the files listed for the area I ask about. Before
-editing, summarize the plan and the files you expect to touch. Preserve
-existing user data, do not revert unrelated changes, and prefer
-source-code/script changes over generated workbook edits.
+jacobdashboard/
+├─ App Files/                       # The desktop dashboard app
+│  ├─ launch_dashboard.py           # Entry point — opens the desktop window
+│  ├─ build_desktop.py              # PyInstaller packager
+│  ├─ JacobWorkforceDashboard.spec  # PyInstaller spec
+│  ├─ README.md
+│  ├─ backend/                      # FastAPI server (read-only Excel API)
+│  │  ├─ requirements.txt
+│  │  └─ app/
+│  │     ├─ main.py                 # Mounts /api/excel + frontend
+│  │     ├─ desktop.py              # Boots uvicorn + opens pywebview window
+│  │     ├─ api/excel.py            # GET /api/excel/* + POST /refresh
+│  │     └─ services/excel_reader.py # Workbook parser + cache
+│  └─ frontend/                     # Vite + React + TypeScript
+│     ├─ package.json
+│     └─ src/
+│        ├─ main.tsx, App.tsx, App.css, index.css, types.ts, api.ts
+│        ├─ context/DashboardContext.tsx   # Shared workbook payload
+│        ├─ lib/format.ts                  # Date / status formatting helpers
+│        ├─ components/                    # ShellLayout, PageShell, KPIStrip,
+│        │                                 # RefreshBar, StatusPill
+│        └─ pages/                         # Six dashboard pages (see below)
+├─ cert_tracker/                    # The workbook + the PDF importer toolkit
+│  ├─ Contractor Certifications Tracker.xlsx       # Live workbook
+│  ├─ Contractor Certifications Tracker Demo.xlsx  # Reproducible demo data
+│  ├─ Import PDF.bat                # Drag-and-drop PDF entry point (Windows)
+│  ├─ Evidence of training/         # Source PDFs (input examples)
+│  └─ scripts/
+│     ├─ import_pdf.py              # Main importer (Anejo 3 PDF → workbook)
+│     ├─ build_cert_tracker.py      # Bootstrap a fresh workbook from scratch
+│     ├─ populate_demo.py           # Fill the demo workbook with dummy data
+│     └─ dedupe_workbook.py         # One-shot cleanup for legacy duplicates
+├─ CHAT_LOG/
+│  ├─ HANDOFF.md                    # ← you are here
+│  ├─ README.md                     # Explains the chat log folder
+│  └─ *.raw.jsonl                   # Verbatim chat transcripts
+└─ .claude/settings.local.json      # Claude Code permissions for this repo
 ```
 
-Excel tracker work:
+## How to Run
+
+```bash
+# from the project root
+python "App Files/launch_dashboard.py"
+```
+
+The launcher builds the React frontend if `frontend/dist` is missing, then
+opens a native desktop window pointing at a local FastAPI server on a free
+port. To package as a single executable: `python "App Files/build_desktop.py"`.
+
+## Frontend Architecture
+
+Single-page React app with **six pages** under one `<DashboardProvider>` so
+the workbook payload is fetched once and shared across all routes. The user
+clicks **Refresh** on any page (top-of-page bar) to call
+`POST /api/excel/refresh` and re-read.
+
+| Route | Page | What it shows |
+| --- | --- | --- |
+| `/` | Overview | KPI strip + compliance donut + contractor leaderboard + top-5 urgent + 5 worst-covered certs |
+| `/actions` | Action Center | Full filterable action list: search, contractor, status, days-bucket chips |
+| `/contractors` | Contractor Scorecards | Grid of cards: compliance %, status mix bar, weakest cert, contact |
+| `/workers` | Workforce Roster | Searchable table; click a worker to expand and see every cert they hold |
+| `/certifications` | Cert Coverage | Stacked-bar chart (Recharts) of top 12 + full coverage table |
+| `/heatmap` | Compliance Heatmap | Workers × certs grid, with contractor filter and sort modes |
+
+Reusable components: `ShellLayout` (sidebar + content frame), `PageShell`
+(per-page header + refresh + loading/error states), `KPIStrip`,
+`RefreshBar`, `StatusPill` + `StatusStackedBar`.
+
+## Backend Architecture
+
+Single FastAPI app, no database. The workbook is the database.
 
 ```text
-Read @HANDOFF.md and @PROJECT_HISTORY.md, then inspect
-@cert_tracker/scripts/import_pdf.py and
-@cert_tracker/scripts/build_cert_tracker.py. Update the scripts first and
-only regenerate or edit the workbook if explicitly requested.
+GET  /api/health                     liveness probe
+GET  /api/excel/health               workbook path + last-modified info
+GET  /api/excel/dashboard            full payload for the dashboard
+GET  /api/excel/contractors          contractor rollups
+GET  /api/excel/workers              all workers with their cert statuses
+GET  /api/excel/workers/{name}       single worker (URL-encoded name)
+GET  /api/excel/certifications       cert catalog
+POST /api/excel/refresh              force reload from disk
+GET  /                               serves the built React app (SPA fallback)
 ```
 
-Dashboard work:
+`services/excel_reader.py` is the parser:
 
-```text
-Read @HANDOFF.md and @PROJECT_HISTORY.md, then inspect
-@"App Files/frontend/src/pages/ExcelDashboardPage.tsx",
-@"App Files/frontend/src/api.ts", and
-@"App Files/backend/app/api/excel.py". Continue Phase 1 of the dashboard
-implementation.
-```
+- Caches the parsed workbook in memory.
+- Auto-invalidates on file mtime change.
+- Computes per-cell renewal status (green / yellow / red / blank).
+- Aggregates per-worker, per-contractor, per-cert rollups.
+- Builds an action list sorted by `abs(days_until_anniversary)` so recent
+  transitions float to the top.
+
+Color rules match the workbook's conditional formatting:
+
+- GREEN: has a date and >60 days until 1-year anniversary
+- YELLOW: has a date and 31–60 days until anniversary
+- RED: has a date and ≤30 days until anniversary, or anniversary already passed
+- BLANK: no date entered (intentionally not colored)
+
+## PDF Importer (cert_tracker/scripts/import_pdf.py)
+
+Drag-and-drop a Cordillera "Anejo 3" PDF onto `cert_tracker/Import PDF.bat`
+on Windows. The importer:
+
+- Identifies contractor name from the form header.
+- Reads worker names + cert dates from page 1 (HSE certifications) using
+  pdfplumber's `find_tables`. When a cell comes back empty, falls back to
+  scanning the cell's bbox for date words (rescues date values that
+  pdfplumber misaligned because of multi-line / wrapped text).
+- Reads page 2 (additional training) using word-coordinate matching for
+  rotated headers. Recognizes both `m/d/yyyy` and `Month YYYY` formats —
+  even when the year wraps to the next visual line.
+- Auto-registers any cert column that's not yet in the catalog (defaults
+  to category "Additional Training", validity 0).
+- Matches contractor names tolerantly ("GeoEnviroTech, Inc" ==
+  "GeoEnviroTech, Inc.") and cert names tolerantly ("OSHA 8 Hr Refresher"
+  == "OSHA 8Hr Refresher"). Reuses the workbook's spelling for both.
+- Updates existing rows in place (newer date wins), never duplicates.
+- Syncs Certifications ↔ Tracker ↔ Dashboard sheets so a rename in any one
+  propagates via formula references.
+- Re-applies the 1-year renewal color rules.
+
+## Recent Work (April 28, 2026)
+
+- Pivoted the entire stack away from the legacy SQLite workforce dashboard.
+  Backend now serves only `/api/excel/*` + `/api/health` + the frontend.
+  Frontend now has six dedicated pages (Overview, Actions, Contractors,
+  Workers, Certifications, Heatmap), all sharing a single
+  `DashboardContext`.
+- Deleted from the backend: `database.py`, `models.py`, `schemas.py`,
+  `seed.py`, `config.py`, all of `api/*.py` except `excel.py`, all of
+  `services/*.py` except `excel_reader.py`, and the
+  `data/workforce_dashboard.db` SQLite file.
+- Trimmed `requirements.txt` (dropped sqlalchemy, python-multipart, pypdf;
+  added openpyxl).
+- Deleted from the frontend: legacy pages
+  (Companies/Contractors/Workers/Certifications/Dashboard/Reports/TrainingHub),
+  unused hooks, lib helpers, the `react.svg` asset, plus a few hundred
+  lines of legacy types and API methods.
+- PDF importer fixes:
+  - Contractor matching is now punctuation-insensitive
+    (`normalize_company`).
+  - Cert-name matching is now whitespace-insensitive
+    (`normalize_compact`); fixes the "OSHA 8 Hr Refresher" duplicate column
+    bug.
+  - Removed the over-aggressive "Manejo de Tijeras" fallback that was
+    stealing dates from neighboring columns.
+  - Added a bounded "orphan column" rescue that handles pdfplumber's
+    multi-line header misalignment without false positives.
+  - Page-2 extractor now recognizes month-year date pairs ("July 2005",
+    "January\n2008") and OSHA HAZWOPER spelling variants
+    ("OSHA40Hr HOZWOPER" → "OSHA 40Hr HAZWOPER").
+- One-shot `dedupe_workbook.py` cleaned up legacy duplicate columns and
+  rows already in the workbook.
+- Added module-level comments to every kept file (frontend + backend) so a
+  new collaborator can navigate the codebase without external docs.
+
+## Known Future Work / Nice-to-Haves
+
+1. **Worker risk score** — composite metric (count of red certs × cert
+   weight) to surface highest-risk workers on the workers page.
+2. **Trend over time** — would require periodic snapshots of the workbook
+   (no historical data in the workbook today).
+3. **Export to PDF** — for audit packets. Could render any page to PDF via
+   the print-friendly stylesheet.
+4. **Code-split the Recharts bundle** — production JS is ~580kB minified;
+   lazy-loading the certifications page would drop initial load
+   significantly.
+5. **Inline-style ESLint warnings** — `style={{ width: ${pct}% }}` on the
+   stacked bars and `style={{ '--cert-count': ... }}` on the heatmap are
+   intentional (dynamic CSS variables). Could swap to data-attributes if
+   the warnings become noisy.
+
+## Tested Workflows
+
+- Fresh import of `Cornerstone training evidence.pdf` correctly populates
+  Manejo de Tijeras for José/Carlos/Felipe (3/4/2025).
+- Fresh import of `Geoenvirotech certification evidence (1).pdf` correctly
+  populates OSHA 40Hr HAZWOPER for all six workers (month-year dates).
+- Re-importing the same PDF a second time updates existing rows in place
+  (no duplicates).
+- Frontend `npm run build` succeeds (≈3s) with no TypeScript errors.
+- Backend `from app.main import app` succeeds and exposes only the
+  expected routes.

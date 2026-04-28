@@ -1,18 +1,10 @@
-import type {
-  Company,
-  Contractor,
-  ContractorMatrixImportResult,
-  ContractorMatrixPreview,
-  DashboardOverview,
-  ExcelDashboard,
-  ExcelHealth,
-  ExcelWorker,
-  ReportPreview,
-  SourceDocument,
-  TrainingCatalog,
-  Worker,
-  WorkerTraining,
-} from './types'
+// Thin fetch wrapper for the backend's /api/excel/* endpoints.
+//
+// VITE_API_BASE lets the dev server target a different host (e.g. when running
+// the frontend on its own port and proxying to a separately-running backend).
+// In the packaged desktop build the frontend is served from the same origin
+// as the API, so VITE_API_BASE stays empty and requests are same-origin.
+import type { ExcelDashboard, ExcelHealth, ExcelWorker } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
@@ -37,103 +29,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  getCompanies: () => request<Company[]>('/api/companies'),
-  createCompany: (payload: Record<string, unknown>) =>
-    request<Company>('/api/companies', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  updateCompany: (companyId: number, payload: Record<string, unknown>) =>
-    request<Company>(`/api/companies/${companyId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  deleteCompany: (companyId: number) => request<void>(`/api/companies/${companyId}`, { method: 'DELETE' }),
-
-  getContractorRecords: (params: URLSearchParams) =>
-    request<Contractor[]>(`/api/contractors?${params.toString()}`),
-  createContractor: (payload: Record<string, unknown>) =>
-    request<Contractor>('/api/contractors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  updateContractor: (contractorId: number, payload: Record<string, unknown>) =>
-    request<Contractor>(`/api/contractors/${contractorId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  deleteContractor: (contractorId: number) =>
-    request<void>(`/api/contractors/${contractorId}`, { method: 'DELETE' }),
-
-  getWorkers: (params: URLSearchParams) =>
-    request<Worker[]>(`/api/workers?${params.toString()}`),
-  createWorker: (payload: Record<string, unknown>) =>
-    request<Worker>('/api/workers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  updateWorker: (workerId: number, payload: Record<string, unknown>) =>
-    request<Worker>(`/api/workers/${workerId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-  deleteWorker: (workerId: number) =>
-    request<void>(`/api/workers/${workerId}`, { method: 'DELETE' }),
-
-  getTrainingCatalog: () => request<TrainingCatalog[]>('/api/training/catalog'),
-  getTrainingRecords: (params: URLSearchParams) =>
-    request<WorkerTraining[]>(`/api/training/records?${params.toString()}`),
-  upsertTrainingRecord: (payload: FormData) =>
-    request<WorkerTraining>('/api/training/records', {
-      method: 'POST',
-      body: payload,
-    }),
-  deleteTrainingRecord: (workerId: number, catalogId: number) =>
-    request<void>(`/api/training/records/${workerId}/${catalogId}`, { method: 'DELETE' }),
-  getSourceDocuments: (params: URLSearchParams) =>
-    request<SourceDocument[]>(`/api/training/documents?${params.toString()}`),
-  previewTrainingImport: (payload: FormData) =>
-    request<ContractorMatrixPreview>('/api/training/preview', {
-      method: 'POST',
-      body: payload,
-    }),
-  importTrainingDocument: (payload: FormData) =>
-    request<ContractorMatrixImportResult>('/api/training/import', {
-      method: 'POST',
-      body: payload,
-    }),
-
-  getDashboardOverview: (companyId: number | null) => {
-    const params = new URLSearchParams()
-    if (companyId) params.set('company_id', String(companyId))
-    return request<DashboardOverview>(`/api/dashboard/overview?${params.toString()}`)
-  },
-
-  getReportPreview: (payload: Record<string, unknown>) =>
-    request<ReportPreview>('/api/reports/preview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    }),
-
-  buildExportUrl: (
-    dataset: 'workers' | 'trainings',
-    options: { companyId?: number | null; statusFilter?: string } = {},
-  ) => {
-    const params = new URLSearchParams()
-    if (options.companyId) params.set('company_id', String(options.companyId))
-    if (options.statusFilter) params.set('status_filter', options.statusFilter)
-    const query = params.toString()
-    return `${API_BASE}/api/exports/${dataset}.csv${query ? `?${query}` : ''}`
-  },
-
-  // Excel-driven dashboard --------------------------------------------------
   getExcelHealth: () => request<ExcelHealth>('/api/excel/health'),
   getExcelDashboard: () => request<ExcelDashboard>('/api/excel/dashboard'),
   getExcelWorker: (name: string) =>

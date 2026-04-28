@@ -1,225 +1,135 @@
-import { FormEvent, useEffect, useState } from 'react'
+// Contractors page — one scorecard per contractor.
+//
+// Each card carries the contractor's compliance %, a stacked status bar,
+// the count of workers, and the cert most often missing/red ("weakest cert"
+// — computed by the backend). Sort options surface the worst performers
+// first when the user wants to triage.
+import { Mail, Phone, TrendingDown, TrendingUp } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
-import { api } from '../api'
-import type { Company, Contractor, Worker } from '../types'
+import { PageShell } from '../components/PageShell'
+import { StatusStackedBar } from '../components/StatusPill'
+import { useDashboard } from '../context/DashboardContext'
 
-type ContractorsPageProps = {
-  companies: Company[]
-  selectedCompanyId: number | null
-}
+type SortMode = 'compliance-asc' | 'compliance-desc' | 'workers-desc' | 'name'
 
-const emptyForm = {
-  company_id: 0,
-  name: '',
-  primary_contact: '',
-  notes: '',
-}
+export function ContractorsPage() {
+  const { data } = useDashboard()
+  const [sort, setSort] = useState<SortMode>('compliance-asc')
+  const contractors = data?.contractors ?? []
 
-export function ContractorsPage({ companies, selectedCompanyId }: ContractorsPageProps) {
-  const [contractors, setContractors] = useState<Contractor[]>([])
-  const [workers, setWorkers] = useState<Worker[]>([])
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [form, setForm] = useState({
-    ...emptyForm,
-    company_id: selectedCompanyId ?? companies[0]?.id ?? 0,
-  })
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-
-  async function loadContractors() {
-    const params = new URLSearchParams()
-    if (selectedCompanyId) params.set('company_id', String(selectedCompanyId))
-    const [contractorData, workerData] = await Promise.all([
-      api.getContractorRecords(params),
-      api.getWorkers(params),
-    ])
-    setContractors(contractorData)
-    setWorkers(workerData)
-    setSelectedId((current) =>
-      current && contractorData.some((item) => item.id === current) ? current : null,
-    )
-  }
-
-  useEffect(() => {
-    loadContractors().catch((error) =>
-      setMessage(error instanceof Error ? error.message : 'Unable to load contractors'),
-    )
-  }, [selectedCompanyId])
-
-  useEffect(() => {
-    setForm((current) => ({
-      ...current,
-      company_id: current.company_id || selectedCompanyId || companies[0]?.id || 0,
-    }))
-  }, [selectedCompanyId, companies])
-
-  function fillForm(contractor: Contractor | null) {
-    if (!contractor) {
-      setSelectedId(null)
-      setForm({
-        ...emptyForm,
-        company_id: selectedCompanyId ?? companies[0]?.id ?? 0,
-      })
-      return
+  const sorted = useMemo(() => {
+    const copy = [...contractors]
+    switch (sort) {
+      case 'compliance-asc':
+        copy.sort((a, b) => a.compliance_pct - b.compliance_pct)
+        break
+      case 'compliance-desc':
+        copy.sort((a, b) => b.compliance_pct - a.compliance_pct)
+        break
+      case 'workers-desc':
+        copy.sort((a, b) => b.worker_count - a.worker_count)
+        break
+      case 'name':
+        copy.sort((a, b) => a.name.localeCompare(b.name))
+        break
     }
-
-    setSelectedId(contractor.id)
-    setForm({
-      company_id: contractor.company_id,
-      name: contractor.name,
-      primary_contact: contractor.primary_contact ?? '',
-      notes: contractor.notes ?? '',
-    })
-  }
-
-  const workerCountsByContractorId = workers.reduce<Record<number, number>>((counts, worker) => {
-    if (worker.contractor_id == null) return counts
-    counts[worker.contractor_id] = (counts[worker.contractor_id] ?? 0) + 1
-    return counts
-  }, {})
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault()
-    try {
-      setBusy(true)
-      setMessage(null)
-      const payload = {
-        ...form,
-        primary_contact: form.primary_contact || null,
-        notes: form.notes || null,
-      }
-      if (selectedId) {
-        await api.updateContractor(selectedId, payload)
-        setMessage('Contractor updated.')
-      } else {
-        await api.createContractor(payload)
-        setMessage('Contractor created.')
-        fillForm(null)
-      }
-      await loadContractors()
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to save contractor')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!selectedId) return
-    if (!window.confirm('Delete this contractor? Workers will become unassigned.')) return
-    try {
-      setBusy(true)
-      await api.deleteContractor(selectedId)
-      setMessage('Contractor deleted.')
-      fillForm(null)
-      await loadContractors()
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to delete contractor')
-    } finally {
-      setBusy(false)
-    }
-  }
+    return copy
+  }, [contractors, sort])
 
   return (
-    <section className="page-grid two-column">
-      <article className="surface panel-stack">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Project contractors</p>
-            <h3>Contractor groups</h3>
-          </div>
-          <button className="ghost-button" onClick={() => fillForm(null)} type="button">
-            New contractor
-          </button>
+    <PageShell
+      eyebrow="Contractors"
+      title="Per-contractor scorecards"
+      description="One card per contractor: workers, compliance, and the cert most often missing or red."
+      actions={
+        <select
+          aria-label="Sort contractors"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortMode)}
+        >
+          <option value="compliance-asc">Lowest compliance first</option>
+          <option value="compliance-desc">Highest compliance first</option>
+          <option value="workers-desc">Most workers</option>
+          <option value="name">Name (A–Z)</option>
+        </select>
+      }
+    >
+      {sorted.length === 0 ? (
+        <p className="excel-empty">No contractors yet.</p>
+      ) : (
+        <div className="contractor-grid">
+          {sorted.map((c) => {
+            const tone =
+              c.compliance_pct >= 90
+                ? 'tone-good'
+                : c.compliance_pct >= 70
+                ? 'tone-warn'
+                : 'tone-bad'
+            const Icon = c.compliance_pct >= 70 ? TrendingUp : TrendingDown
+            return (
+              <article key={c.name} className={`surface contractor-card ${tone}`}>
+                <header className="contractor-card-head">
+                  <div>
+                    <p className="eyebrow">{c.specialty ?? 'Contractor'}</p>
+                    <h3>{c.name}</h3>
+                  </div>
+                  <div className="contractor-card-pct">
+                    <Icon size={14} />
+                    <span>{c.compliance_pct.toFixed(1)}%</span>
+                  </div>
+                </header>
+
+                <div className="contractor-card-counts">
+                  <div>
+                    <span className="eyebrow">Workers</span>
+                    <strong>{c.worker_count}</strong>
+                  </div>
+                  <div>
+                    <span className="eyebrow">Current</span>
+                    <strong className="tone-good-text">{c.green_count}</strong>
+                  </div>
+                  <div>
+                    <span className="eyebrow">Soon</span>
+                    <strong className="tone-warn-text">{c.yellow_count}</strong>
+                  </div>
+                  <div>
+                    <span className="eyebrow">Urgent</span>
+                    <strong className="tone-bad-text">{c.red_count}</strong>
+                  </div>
+                </div>
+
+                <StatusStackedBar
+                  green={c.green_count}
+                  yellow={c.yellow_count}
+                  red={c.red_count}
+                  blank={c.blank_count}
+                  showLabels
+                />
+
+                <div className="contractor-card-footer">
+                  {c.weakest_cert && (
+                    <p className="contractor-weakest">
+                      <span className="eyebrow">Weakest cert</span>
+                      <strong>{c.weakest_cert}</strong>
+                    </p>
+                  )}
+                  {c.primary_contact && (
+                    <p className="contractor-contact">
+                      <Mail size={12} /> {c.primary_contact}
+                    </p>
+                  )}
+                  {c.notes && (
+                    <p className="contractor-notes">
+                      <Phone size={12} /> {c.notes}
+                    </p>
+                  )}
+                </div>
+              </article>
+            )
+          })}
         </div>
-
-        <div className="company-card-grid">
-          {contractors.map((contractor) => (
-            <button
-              key={contractor.id}
-              className={contractor.id === selectedId ? 'company-card active' : 'company-card'}
-              onClick={() => fillForm(contractor)}
-            >
-              <strong>{contractor.name}</strong>
-              <p>{contractor.primary_contact || contractor.company_name}</p>
-              <div className="company-metrics">
-                <span>{workerCountsByContractorId[contractor.id] ?? contractor.worker_count} workers</span>
-                <span>{contractor.trainings_completed}/{contractor.trainings_required} complete</span>
-                <span>{contractor.compliance_pct}% ready</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </article>
-
-      <article className="surface panel-stack">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">{selectedId ? 'Edit contractor' : 'Create contractor'}</p>
-            <h3>{selectedId ? 'Contractor profile' : 'New contractor profile'}</h3>
-          </div>
-        </div>
-
-        <form className="form-grid" onSubmit={handleSubmit}>
-          <label className="field">
-            <span>Project</span>
-            <select
-              required
-              value={form.company_id}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, company_id: Number(event.target.value) }))
-              }
-            >
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>
-                  {company.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span>Contractor name</span>
-            <input
-              required
-              value={form.name}
-              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder="GeoEnvirotech"
-            />
-          </label>
-
-          <label className="field">
-            <span>Primary contact</span>
-            <input
-              value={form.primary_contact}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, primary_contact: event.target.value }))
-              }
-            />
-          </label>
-
-          <label className="field field-full">
-            <span>Notes</span>
-            <textarea
-              value={form.notes}
-              onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
-            />
-          </label>
-
-          {message && <div className="info-banner field-full">{message}</div>}
-
-          <div className="action-row field-full">
-            <button className="primary-button" disabled={busy} type="submit">
-              {busy ? 'Saving...' : selectedId ? 'Save contractor' : 'Create contractor'}
-            </button>
-            {selectedId && (
-              <button className="danger-button" disabled={busy} type="button" onClick={handleDelete}>
-                Delete contractor
-              </button>
-            )}
-          </div>
-        </form>
-      </article>
-    </section>
+      )}
+    </PageShell>
   )
 }
