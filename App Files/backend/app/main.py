@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import companies, contractors, dashboard, exports, lookups, reports, training, workers
+from .api import companies, contractors, dashboard, excel, exports, lookups, reports, training, workers
 from .database import BASE_DIR, Base, UPLOAD_DIR, engine, ensure_schema, session_scope
 from .seed import ensure_default_contractors, ensure_project_company, ensure_training_catalog, migrate_legacy_training_data
 
@@ -49,6 +49,7 @@ app.include_router(dashboard.router, prefix="/api")
 app.include_router(exports.router, prefix="/api")
 app.include_router(lookups.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
+app.include_router(excel.router)  # excel router carries its own /api/excel prefix
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 

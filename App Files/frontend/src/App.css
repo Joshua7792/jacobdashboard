@@ -969,3 +969,397 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ============================================================ */
+/* Excel dashboard                                              */
+/* ============================================================ */
+
+.excel-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Refresh bar ------------------------------------------------- */
+
+.excel-refresh-bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+.excel-refresh-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.excel-refresh-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.14);
+  color: #1d4ed8;
+  display: grid;
+  place-items: center;
+}
+
+.excel-refresh-info strong {
+  display: block;
+  font-size: 0.98rem;
+  margin-top: 2px;
+}
+
+.excel-refresh-meta {
+  margin: 4px 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.excel-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.excel-refresh-error {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(248, 113, 113, 0.12);
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+.primary-button {
+  border: 0;
+  cursor: pointer;
+  padding: 10px 18px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: white;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spin {
+  animation: excel-spin 1s linear infinite;
+}
+
+@keyframes excel-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* KPI strip --------------------------------------------------- */
+
+.excel-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.excel-kpi-card {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+.excel-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  display: grid;
+  place-items: center;
+  margin-bottom: 8px;
+}
+
+.excel-kpi-value {
+  font-size: 1.85rem;
+  line-height: 1.1;
+  margin: 4px 0;
+}
+
+.excel-kpi-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.excel-kpi-card.tone-good .excel-kpi-icon { background: rgba(34, 197, 94, 0.14); color: #15803d; }
+.excel-kpi-card.tone-warn .excel-kpi-icon { background: rgba(234, 179, 8, 0.18); color: #a16207; }
+.excel-kpi-card.tone-bad  .excel-kpi-icon { background: rgba(239, 68, 68, 0.16); color: #b91c1c; }
+
+/* Section heads ---------------------------------------------- */
+
+.excel-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.excel-section-head h3 {
+  margin: 4px 0 4px;
+  font-size: 1.1rem;
+}
+
+.excel-section-sub {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+/* Action list ------------------------------------------------- */
+
+.excel-action-section {
+  padding: 22px 24px;
+}
+
+.excel-action-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.excel-action-filters select {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: white;
+  font-size: 0.85rem;
+}
+
+.excel-action-table-wrap {
+  overflow-x: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.excel-action-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.excel-action-table thead {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.excel-action-table th,
+.excel-action-table td {
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  vertical-align: top;
+}
+
+.excel-action-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.excel-action-worker {
+  font-weight: 600;
+}
+
+.excel-action-contractor {
+  color: #475569;
+  font-size: 0.82rem;
+}
+
+.excel-action-cert {
+  display: block;
+  font-weight: 500;
+}
+
+.excel-action-category {
+  display: block;
+  font-size: 0.74rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.excel-action-days {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.excel-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+/* Status pills ----------------------------------------------- */
+
+.status-pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.status-pill.status-green  { background: rgba(34, 197, 94, 0.16); color: #166534; }
+.status-pill.status-yellow { background: rgba(234, 179, 8, 0.22); color: #854d0e; }
+.status-pill.status-red    { background: rgba(239, 68, 68, 0.18); color: #991b1b; }
+.status-pill.status-blank  { background: rgba(148, 163, 184, 0.18); color: #475569; }
+
+/* Heatmap ---------------------------------------------------- */
+
+.excel-heatmap-section {
+  padding: 22px 24px;
+}
+
+.excel-heatmap-legend {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.excel-heatmap-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.excel-heatmap-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 240px) repeat(var(--cert-count), minmax(78px, 1fr));
+  min-width: 100%;
+}
+
+.excel-heatmap-corner,
+.excel-heatmap-header,
+.excel-heatmap-rowhead,
+.excel-heatmap-cell {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  border-right: 1px solid rgba(148, 163, 184, 0.12);
+  font-size: 0.78rem;
+}
+
+.excel-heatmap-corner,
+.excel-heatmap-header {
+  background: rgba(15, 23, 42, 0.05);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.excel-heatmap-corner {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+}
+
+.excel-heatmap-header {
+  display: flex;
+  align-items: flex-end;
+  min-height: 88px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: left;
+  line-height: 1.1;
+}
+
+.excel-heatmap-rowhead {
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.excel-heatmap-rowhead strong {
+  font-size: 0.86rem;
+}
+
+.excel-heatmap-rowhead span {
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+.excel-heatmap-cell {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.excel-heatmap-cell.status-green  { background: rgba(34, 197, 94, 0.18); color: #14532d; }
+.excel-heatmap-cell.status-yellow { background: rgba(234, 179, 8, 0.22); color: #713f12; }
+.excel-heatmap-cell.status-red    { background: rgba(239, 68, 68, 0.20); color: #7f1d1d; }
+.excel-heatmap-cell.status-blank  { background: rgba(148, 163, 184, 0.10); color: #94a3b8; }
+
+.excel-heatmap-cell-text {
+  font-size: 0.72rem;
+}
+
+/* Issues card ------------------------------------------------ */
+
+.excel-issues-card {
+  padding: 16px 20px;
+  background: rgba(254, 243, 199, 0.45);
+  color: #78350f;
+  border: 1px solid rgba(234, 179, 8, 0.4);
+}
+
+.excel-issues-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.excel-issues-card ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.86rem;
+}
+
+/* Error card ------------------------------------------------- */
+
+.excel-error-card {
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  color: #b91c1c;
+}
+
+.excel-error-card h3 {
+  margin: 4px 0;
+}

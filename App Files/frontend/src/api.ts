@@ -4,6 +4,9 @@ import type {
   ContractorMatrixImportResult,
   ContractorMatrixPreview,
   DashboardOverview,
+  ExcelDashboard,
+  ExcelHealth,
+  ExcelWorker,
   ReportPreview,
   SourceDocument,
   TrainingCatalog,
@@ -129,4 +132,15 @@ export const api = {
     const query = params.toString()
     return `${API_BASE}/api/exports/${dataset}.csv${query ? `?${query}` : ''}`
   },
+
+  // Excel-driven dashboard --------------------------------------------------
+  getExcelHealth: () => request<ExcelHealth>('/api/excel/health'),
+  getExcelDashboard: () => request<ExcelDashboard>('/api/excel/dashboard'),
+  getExcelWorker: (name: string) =>
+    request<ExcelWorker>(`/api/excel/workers/${encodeURIComponent(name)}`),
+  refreshExcelWorkbook: () =>
+    request<{ ok: boolean; loaded_at: string; last_modified: string }>(
+      '/api/excel/refresh',
+      { method: 'POST' },
+    ),
 }

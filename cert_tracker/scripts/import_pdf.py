@@ -45,6 +45,23 @@ def normalize(s: Optional[str]) -> str:
     return s
 
 
+def normalize_company(s: Optional[str]) -> str:
+    """Match contractor names tolerantly: strip trailing punctuation and
+    collapse common business-suffix variations ("Inc." vs "Inc")."""
+    base = normalize(s)
+    if not base:
+        return ""
+    # Drop periods and commas everywhere — they're decorative in company names.
+    base = base.replace(".", "").replace(",", "")
+    base = re.sub(r"\s+", " ", base).strip()
+    return base
+
+
+def normalize_compact(s: Optional[str]) -> str:
+    """Whitespace-insensitive normalization (e.g. 'OSHA 8 Hr' == 'OSHA 8Hr')."""
+    return re.sub(r"\s+", "", normalize(s))
+
+
 # --- Date parsing ---
 MONTHS_ES = {
     "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
@@ -78,6 +95,17 @@ PAGE2_HEADER_ALIASES = {
     "concrete masonry": "Concrete & Masonry",
     "concrete & mansory": "Concrete & Masonry",
     "concrete mansory": "Concrete & Masonry",
+    # OSHA 40Hr HAZWOPER often comes through with a misread / typo
+    # ("HOZWOPER") and varying spacing because the page-2 header is rotated.
+    "osha 40hr hazwoper": "OSHA 40Hr HAZWOPER",
+    "osha 40 hr hazwoper": "OSHA 40Hr HAZWOPER",
+    "osha 40hr hozwoper": "OSHA 40Hr HAZWOPER",
+    "osha 40 hr hozwoper": "OSHA 40Hr HAZWOPER",
+    # OSHA 8Hr Refresher with optional space between "8" and "Hr".
+    "osha 8hr refresher": "OSHA 8Hr Refresher",
+    "osha 8 hr refresher": "OSHA 8Hr Refresher",
+    "drilling safety": "Drilling Safety",
+    "utility locating": "Utility Locating",
 }
 
 # Matches either a plain "m/d/yyyy" date or a day-range form like
@@ -196,6 +224,11 @@ def match_cert(header: str, aliases: dict[str, str]) -> Optional[str]:
     compact = normalize(re.sub(r"[()]", "", key))
     if compact in aliases:
         return aliases[compact]
+    # Whitespace-insensitive: "osha 8 hr refresher" -> "osha8hrrefresher"
+    no_ws = re.sub(r"\s+", "", key)
+    for alias_key, canonical in aliases.items():
+        if re.sub(r"\s+", "", alias_key) == no_ws:
+            return canonical
     # Substring match (either direction)
     for norm_key, canonical in aliases.items():
         if len(norm_key) < 6:
@@ -251,19 +284,32 @@ def build_table_header(table: list[list], header_idx: int, first_data_idx: int) 
     return combined
 
 
-def value_for_cert_column(row: list, idx: int, header_name: str) -> Optional[str]:
+def value_for_cert_column(
+    row: list,
+    idx: int,
+    header_name: str,
+    header_list: Optional[list] = None,
+) -> Optional[str]:
     if idx < len(row) and row[idx] not in (None, ""):
         return row[idx]
 
-    header_norm = normalize(header_name)
-    if "manejo de tijeras" in header_norm:
-        for alt_idx in (idx - 1, idx + 1, idx - 2, idx + 2):
-            if alt_idx < 0 or alt_idx >= len(row):
-                continue
-            candidate = row[alt_idx]
-            if parse_date(candidate):
-                return candidate
-
+    # Rescue case: when a multi-line header wraps awkwardly, pdfplumber sometimes
+    # creates an extra "orphan" column next to the real one — date data lands in
+    # the orphan, while the real column ends up with None. Pull from an
+    # immediately adjacent column ONLY if that neighbor has no header of its
+    # own (so we can't accidentally steal a date from a different cert).
+    if header_list is None:
+        return None
+    for offset in (-1, 1):
+        nb = idx + offset
+        if nb < 0 or nb >= len(row):
+            continue
+        nb_header = header_list[nb] if nb < len(header_list) else ""
+        if normalize(str(nb_header) if nb_header is not None else ""):
+            continue  # neighbor has its own header — not an orphan
+        candidate = row[nb] if nb < len(row) else None
+        if candidate and parse_date(candidate):
+            return candidate
     return None
 
 
@@ -395,6 +441,11 @@ def merge_worker_certs(
 def canonicalize_page2_header(label: str) -> Optional[str]:
     label = label.replace("\n", " ")
     label = label.replace("&", " & ")
+    # Page-2 headers come from rotated text; words like "OSHA40Hr" arrive
+    # without a space. Split letter/digit boundaries so "OSHA40Hr HOZWOPER"
+    # normalizes to "osha 40 hr hozwoper" before alias lookup.
+    label = re.sub(r"([A-Za-z])(\d)", r"\1 \2", label)
+    label = re.sub(r"(\d)([A-Za-z])", r"\1 \2", label)
     label = re.sub(r"\s+", " ", label).strip()
     key = normalize(label)
     return PAGE2_HEADER_ALIASES.get(key)
@@ -498,19 +549,89 @@ def extract_additional_training_page(page: pdfplumber.page.Page) -> dict[str, di
         return {}
 
     parsed: dict[str, dict[str, date]] = {}
-    date_words = [
-        w for w in words
-        if DATE_RE.fullmatch(w["text"]) and 205 <= w["top"] <= 430 and w["x0"] >= 180
-    ]
-    for word in date_words:
-        center_y = (word["top"] + word["bottom"]) / 2
+
+    # Build the list of "date tokens" found in the data area. Two flavors:
+    #   1) a single-word m/d/yyyy match (existing behavior)
+    #   2) a "MonthName YYYY" pair where the year is the same line OR the line
+    #      directly below at similar x (e.g. "January\n2008" — common in OSHA
+    #      40Hr HAZWOPER cells when month-year wraps inside a narrow column).
+    data_words = sorted(
+        [w for w in words if 205 <= w["top"] <= 430 and w["x0"] >= 180],
+        key=lambda w: (w["top"], w["x0"]),
+    )
+
+    date_tokens: list[dict] = []
+    consumed: set[int] = set()
+
+    # Pass 1: single-word numeric dates.
+    for w in data_words:
+        if DATE_RE.fullmatch(w["text"]) and parse_date(w["text"]):
+            date_tokens.append({
+                "text": w["text"],
+                "x0": w["x0"], "x1": w["x1"],
+                "top": w["top"], "bottom": w["bottom"],
+            })
+            consumed.add(id(w))
+
+    # Pass 2: month-name + 4-digit-year pairs (same line or stacked).
+    MONTH_NAMES = {
+        "january", "february", "march", "april", "may", "june", "july",
+        "august", "september", "october", "november", "december",
+        "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept",
+        "oct", "nov", "dec",
+        "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+        "agosto", "septiembre", "setiembre", "octubre", "noviembre",
+        "diciembre",
+    }
+    year_re = re.compile(r"\d{4}")
+    for mw in data_words:
+        if id(mw) in consumed:
+            continue
+        if mw["text"].lower().rstrip(".,") not in MONTH_NAMES:
+            continue
+        mw_cx = (mw["x0"] + mw["x1"]) / 2
+        best_year = None
+        best_score = float("inf")
+        for yw in data_words:
+            if id(yw) in consumed:
+                continue
+            if not year_re.fullmatch(yw["text"]):
+                continue
+            yw_cx = (yw["x0"] + yw["x1"]) / 2
+            dx = abs(mw_cx - yw_cx)
+            if dx > 45:
+                continue
+            dy = yw["top"] - mw["top"]
+            if dy < -3 or dy > 25:
+                continue
+            score = dx + abs(dy) * 0.5
+            if score < best_score:
+                best_score = score
+                best_year = yw
+        if best_year is None:
+            continue
+        combined = f"{mw['text']} {best_year['text']}"
+        if not parse_date(combined):
+            continue
+        date_tokens.append({
+            "text": combined,
+            "x0": min(mw["x0"], best_year["x0"]),
+            "x1": max(mw["x1"], best_year["x1"]),
+            "top": mw["top"],
+            "bottom": max(mw["bottom"], best_year["bottom"]),
+        })
+        consumed.add(id(mw))
+        consumed.add(id(best_year))
+
+    for token in date_tokens:
+        center_y = (token["top"] + token["bottom"]) / 2
         worker_row = min(worker_rows, key=lambda row: abs(row["center_y"] - center_y))
         if abs(worker_row["center_y"] - center_y) > 20:
             continue
 
-        center_x = (word["x0"] + word["x1"]) / 2
+        center_x = (token["x0"] + token["x1"]) / 2
         training_col = min(column_defs, key=lambda col: abs(col["center_x"] - center_x))
-        dt = parse_date(word["text"])
+        dt = parse_date(token["text"])
         if not dt:
             continue
 
@@ -520,6 +641,49 @@ def extract_additional_training_page(page: pdfplumber.page.Page) -> dict[str, di
 
 
 DEBUG = bool(os.environ.get("DEBUG_IMPORT"))
+
+
+def _fill_missing_cells_from_words(table_obj, data: list[list], words: list) -> None:
+    """For each None/empty cell in `data`, search the cell's bbox for words
+    that parse as a date and fill the cell with that text.
+
+    Mutates `data` in place. This catches the common pdfplumber failure where
+    a cell value (e.g. a date) is on the page but pdfplumber didn't attach it
+    to the right cell because surrounding text wraps awkwardly.
+    """
+    if not table_obj or not words:
+        return
+    rows = getattr(table_obj, "rows", None) or []
+    for row_idx, row_obj in enumerate(rows):
+        if row_idx >= len(data):
+            continue
+        row_data = data[row_idx]
+        if row_data is None:
+            continue
+        cells = getattr(row_obj, "cells", None) or []
+        for col_idx, cell_bbox in enumerate(cells):
+            if col_idx >= len(row_data):
+                continue
+            existing = row_data[col_idx]
+            if existing not in (None, ""):
+                continue
+            if not cell_bbox:
+                continue
+            try:
+                x0, top, x1, bottom = cell_bbox
+            except (TypeError, ValueError):
+                continue
+            cell_words = [
+                w for w in words
+                if w["x0"] >= x0 - 1 and w["x1"] <= x1 + 1
+                and w["top"] >= top - 1 and w["bottom"] <= bottom + 1
+            ]
+            if not cell_words:
+                continue
+            cell_words.sort(key=lambda w: (w["top"], w["x0"]))
+            text = " ".join(w["text"] for w in cell_words).strip()
+            if text and parse_date(text):
+                row_data[col_idx] = text
 
 
 def extract_pdf_data(
@@ -542,25 +706,42 @@ def extract_pdf_data(
                 merge_worker_certs(workers, extract_additional_training_page(page))
                 continue
 
-            # Try multiple extraction strategies - default first, then line-based
+            # Try multiple extraction strategies - default first, then line-based.
+            # find_tables returns Table objects (not raw data) so we can pull
+            # per-cell bounding boxes and rescue any cell pdfplumber dropped.
             strategies = [
                 None,  # default
                 {"vertical_strategy": "lines", "horizontal_strategy": "lines"},
                 {"vertical_strategy": "text", "horizontal_strategy": "lines"},
             ]
-            tables: list = []
+            table_pairs: list[tuple[object, list[list]]] = []
             for strat in strategies:
-                tables = page.extract_tables(table_settings=strat) if strat else page.extract_tables()
-                if tables and any(
+                objs = page.find_tables(table_settings=strat) if strat else page.find_tables()
+                if not objs:
+                    continue
+                pairs = [(t, t.extract()) for t in objs]
+                if any(
                     any("empleado" in normalize((c or "")) for c in (row or []))
-                    for tbl in tables
-                    for row in tbl
+                    for _, data in pairs
+                    for row in (data or [])
                 ):
+                    table_pairs = pairs
                     break
 
-            for tbl_idx, table in enumerate(tables or []):
+            page_words = None
+            for tbl_idx, (table_obj, table) in enumerate(table_pairs):
                 if not table or len(table) < 2:
                     continue
+                # Rescue any cells pdfplumber returned as None by scanning the
+                # cell's bbox for date words. Common when cell values wrap
+                # across visual lines (e.g. "3/10/202\n6") and confuse the
+                # default table extractor.
+                if page_words is None:
+                    try:
+                        page_words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+                    except Exception:
+                        page_words = []
+                _fill_missing_cells_from_words(table_obj, table, page_words)
 
                 # Find header row: the row that contains "empleado"
                 header_idx = None
@@ -604,7 +785,7 @@ def extract_pdf_data(
                         continue
                     entry = workers.setdefault(worker_name, {})
                     for idx, header_name in cert_cols:
-                        dt = parse_date(value_for_cert_column(row, idx, header_name))
+                        dt = parse_date(value_for_cert_column(row, idx, header_name, header))
                         if dt:
                             entry[header_name] = dt
 
@@ -1176,14 +1357,14 @@ def ensure_required_certifications(ws_certs: Worksheet, ws_tracker: Worksheet) -
 def find_tracker_row(
     ws: Worksheet, contractor: str, worker: str
 ) -> Optional[int]:
-    c_norm = normalize(contractor)
+    c_norm = normalize_company(contractor)
     w_norm = normalize(worker)
     for r in range(3, 2000):
         wval = ws.cell(row=r, column=2).value
         if wval in (None, ""):
             return None
         cval = ws.cell(row=r, column=1).value or ""
-        if normalize(str(wval)) == w_norm and normalize(str(cval)) == c_norm:
+        if normalize(str(wval)) == w_norm and normalize_company(str(cval)) == c_norm:
             return r
     return None
 
@@ -1221,18 +1402,29 @@ def import_pdf(pdf_path: Path) -> dict:
     for worker_certs in workers_data.values():
         pdf_headers.update(worker_certs.keys())
 
+    # Pre-build a whitespace-insensitive view of the alias map so headers
+    # like "OSHA 8 Hr Refresher" still resolve to canonical "OSHA 8Hr Refresher".
+    compact_alias_map = {normalize_compact(k): v for k, v in alias_map.items()}
+    # Also fold every existing cert column into the compact map directly, so
+    # a column header that's already in the Tracker but missing from the
+    # Certifications-derived alias map still counts as "known".
+    for canonical_name in cert_columns:
+        compact_alias_map.setdefault(normalize_compact(canonical_name), canonical_name)
+
     def _exact_known(name: str) -> bool:
         """Is `name` an exact (normalized) match for a cert already in the catalog?
         Deliberately does NOT use the fuzzy token-overlap fallback, so a new cert
         like 'OSHA 30 501' does not get swallowed by existing 'OSHA 30'.
+        Whitespace-insensitive so 'OSHA 8 Hr Refresher' matches 'OSHA 8Hr Refresher'.
         """
         key = normalize(name)
         if not key:
             return False
         canonical = alias_map.get(key)
         if canonical is None:
-            compact = normalize(re.sub(r"[()]", "", key))
-            canonical = alias_map.get(compact)
+            canonical = alias_map.get(normalize(re.sub(r"[()]", "", key)))
+        if canonical is None:
+            canonical = compact_alias_map.get(normalize_compact(name))
         return canonical is not None and canonical in cert_columns
 
     auto_added: list[str] = []
@@ -1270,12 +1462,26 @@ def import_pdf(pdf_path: Path) -> dict:
     }
 
     # 1) Contractor + primary contact
-    c_norm = normalize(contractor)
-    c_row = find_row(ws_contractors, key_col=1, target_norm=c_norm)
+    # Use a punctuation-insensitive match so "GeoEnviroTech, Inc." (workbook)
+    # and "GeoEnviroTech, Inc" (PDF, period stripped by extract_contractor)
+    # are recognized as the same company.
+    c_norm = normalize_company(contractor)
+    c_row = None
+    for r in range(2, 2000):
+        val = ws_contractors.cell(row=r, column=1).value
+        if val in (None, ""):
+            break
+        if normalize_company(str(val)) == c_norm:
+            c_row = r
+            # Reuse the workbook's spelling so downstream sheets stay
+            # consistent with what's already there.
+            contractor = str(val)
+            break
     if c_row is None:
         c_row = first_empty_row(ws_contractors, key_col=1)
         ws_contractors.cell(row=c_row, column=1, value=contractor)
         stats["contractor_added"] = True
+    stats["contractor"] = contractor
 
     # Fill primary contact if extracted and currently blank
     if primary_contact:
