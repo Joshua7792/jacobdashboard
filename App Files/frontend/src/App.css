@@ -1278,7 +1278,7 @@ body {
 
 .excel-heatmap-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 240px) repeat(var(--cert-count), minmax(78px, 1fr));
+  grid-template-columns: minmax(220px, 240px) repeat(var(--cert-count), minmax(94px, 1fr));
   min-width: 100%;
 }
 
@@ -1340,6 +1340,7 @@ body {
   text-align: center;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  min-height: 42px;
 }
 
 .excel-heatmap-cell.status-green  { background: rgba(34, 197, 94, 0.18); color: #14532d; }
@@ -1350,6 +1351,10 @@ body {
 
 .excel-heatmap-cell-text {
   font-size: 0.72rem;
+  font-weight: 600;
+  display: inline-block;
+  line-height: 1.25;
+  padding-inline: 2px;
 }
 
 /* Issues card ------------------------------------------------ */
@@ -2431,6 +2436,35 @@ body {
 [data-theme="dark"] .excel-heatmap-cell {
   border-bottom-color: rgba(148, 163, 184, 0.14);
   border-right-color: rgba(148, 163, 184, 0.10);
+}
+
+[data-theme="dark"] .excel-heatmap-cell.status-green {
+  background: rgba(22, 101, 52, 0.58);
+  color: #bbf7d0;
+}
+
+[data-theme="dark"] .excel-heatmap-cell.status-yellow {
+  background: rgba(133, 77, 14, 0.60);
+  color: #fef08a;
+}
+
+[data-theme="dark"] .excel-heatmap-cell.status-orange {
+  background: rgba(154, 52, 18, 0.62);
+  color: #fed7aa;
+}
+
+[data-theme="dark"] .excel-heatmap-cell.status-red {
+  background: rgba(127, 29, 29, 0.62);
+  color: #fecaca;
+}
+
+[data-theme="dark"] .excel-heatmap-cell.status-blank {
+  background: rgba(51, 65, 85, 0.38);
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .excel-heatmap-cell-text {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 /* KPI tone backgrounds — slightly lighter so they're visible against the dark surface */

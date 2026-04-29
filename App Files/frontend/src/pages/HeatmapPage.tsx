@@ -170,7 +170,7 @@ function RowFragment({ row, lang, t }: RowFragmentProps) {
         >
           {cell.completed_on ? (
             <span className="excel-heatmap-cell-text">
-              {formatDate(cell.completed_on, lang).split(',')[0]}
+              {formatDate(cell.completed_on, lang)}
             </span>
           ) : null}
         </div>

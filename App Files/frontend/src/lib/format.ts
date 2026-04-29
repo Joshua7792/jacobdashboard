@@ -10,7 +10,9 @@ import type { ExcelStatus, ExcelVisualStatus } from '../types'
 
 function resolveLocale(lang?: string): string | undefined {
   // i18next gives us 'en' or 'es'. toLocaleDateString accepts BCP 47, so a
-  // bare 'en' / 'es' is fine and lets the browser pick a sensible variant.
+  // region variant is enough to keep day-month-year ordering consistent.
+  if (lang?.startsWith('en')) return 'en-GB'
+  if (lang?.startsWith('es')) return 'es'
   return lang || undefined
 }
 
