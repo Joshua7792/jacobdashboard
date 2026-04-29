@@ -106,6 +106,7 @@ export type ExcelCertDemand = {
 export type ExcelDashboard = {
   kpis: ExcelKPIs
   action_list: ExcelActionItem[]
+  workers: ExcelWorker[]
   contractors: ExcelContractor[]
   heatmap: ExcelHeatmap
   cert_demand: ExcelCertDemand[]

@@ -7,6 +7,7 @@
 // counts and compliance %) are computed locally so we control rounding.
 import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { PageShell } from '../components/PageShell'
 import { StatusPill, StatusStackedBar } from '../components/StatusPill'
@@ -16,8 +17,6 @@ import type { ExcelStatus } from '../types'
 
 type SortMode = 'compliance-asc' | 'compliance-desc' | 'name' | 'urgent-desc'
 
-// Aggregate per-worker numbers from the heatmap rows so we don't need an
-// extra round-trip to /api/excel/workers.
 type WorkerRow = {
   worker: string
   contractor: string
@@ -38,6 +37,7 @@ type WorkerRow = {
 }
 
 export function WorkersPage() {
+  const { t, i18n } = useTranslation()
   const { data } = useDashboard()
   const [search, setSearch] = useState('')
   const [contractorFilter, setContractorFilter] = useState('all')
@@ -116,19 +116,19 @@ export function WorkersPage() {
 
   return (
     <PageShell
-      eyebrow="Workforce"
-      title="Worker roster"
-      description="Search, sort, and click any worker to see every cert they hold and where they sit on the renewal clock."
+      eyebrow={t('workers.eyebrow')}
+      title={t('workers.title')}
+      description={t('workers.description')}
       actions={
         <select
-          aria-label="Sort workers"
+          aria-label={t('filter.sort_workers')}
           value={sort}
           onChange={(e) => setSort(e.target.value as SortMode)}
         >
-          <option value="compliance-asc">Lowest compliance first</option>
-          <option value="compliance-desc">Highest compliance first</option>
-          <option value="urgent-desc">Most urgent items</option>
-          <option value="name">Name (A–Z)</option>
+          <option value="compliance-asc">{t('workers.sort_compliance_asc')}</option>
+          <option value="compliance-desc">{t('workers.sort_compliance_desc')}</option>
+          <option value="urgent-desc">{t('workers.sort_urgent_desc')}</option>
+          <option value="name">{t('workers.sort_name')}</option>
         </select>
       }
     >
@@ -138,17 +138,17 @@ export function WorkersPage() {
             <Search size={14} />
             <input
               type="search"
-              placeholder="Search worker or contractor"
+              placeholder={t('workers.search_placeholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </label>
           <select
-            aria-label="Filter by contractor"
+            aria-label={t('filter.by_contractor')}
             value={contractorFilter}
             onChange={(e) => setContractorFilter(e.target.value)}
           >
-            <option value="all">All contractors</option>
+            <option value="all">{t('actions.filter_contractor_all')}</option>
             {contractors.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -156,25 +156,25 @@ export function WorkersPage() {
             ))}
           </select>
           <span className="filter-result-count">
-            {filtered.length} of {workers.length}
+            {t('workers.result_count', { filtered: filtered.length, total: workers.length })}
           </span>
         </div>
 
         {filtered.length === 0 ? (
-          <p className="excel-empty">No workers match.</p>
+          <p className="excel-empty">{t('workers.empty')}</p>
         ) : (
           <div className="worker-table-wrap">
             <table className="worker-table">
               <thead>
                 <tr>
                   <th>
-                    <span className="visually-hidden">Expand row</span>
+                    <span className="visually-hidden">{t('workers.expand_row')}</span>
                   </th>
-                  <th>Worker</th>
-                  <th>Contractor</th>
-                  <th>Compliance</th>
-                  <th>Status mix</th>
-                  <th>Action</th>
+                  <th>{t('workers.col_worker')}</th>
+                  <th>{t('workers.col_contractor')}</th>
+                  <th>{t('workers.col_compliance')}</th>
+                  <th>{t('workers.col_status_mix')}</th>
+                  <th>{t('workers.col_urgent')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -198,7 +198,10 @@ export function WorkersPage() {
                         <td className="worker-pct-cell">
                           <strong>{w.compliancePct.toFixed(0)}%</strong>
                           <small>
-                            {w.green}/{w.green + w.yellow + w.red} dated
+                            {t('workers.dated_label', {
+                              green: w.green,
+                              total: w.green + w.yellow + w.red,
+                            })}
                           </small>
                         </td>
                         <td>
@@ -215,23 +218,31 @@ export function WorkersPage() {
                         <tr key={`${w.worker}-detail`} className="worker-row-detail">
                           <td colSpan={6}>
                             <div className="worker-cert-grid">
-                              {w.certs.map((c) => (
-                                <div key={c.name} className={`worker-cert-tile status-${visualStatus(c.status, c.days)}`}>
-                                  <div className="worker-cert-tile-head">
-                                    <strong>{c.name}</strong>
-                                    <StatusPill status={visualStatus(c.status, c.days)} />
+                              {w.certs.map((c) => {
+                                const visual = visualStatus(c.status, c.days)
+                                return (
+                                  <div
+                                    key={c.name}
+                                    className={`worker-cert-tile status-${visual}`}
+                                  >
+                                    <div className="worker-cert-tile-head">
+                                      <strong>{c.name}</strong>
+                                      <StatusPill status={visual} />
+                                    </div>
+                                    <p className="worker-cert-tile-meta">
+                                      <span>{c.category}</span>
+                                      <span>
+                                        {c.completedOn
+                                          ? t('workers.completed_on', {
+                                              date: formatDate(c.completedOn, i18n.language),
+                                            })
+                                          : t('workers.no_date')}
+                                      </span>
+                                      <span>{relativeDays(c.days, t)}</span>
+                                    </p>
                                   </div>
-                                  <p className="worker-cert-tile-meta">
-                                    <span>{c.category}</span>
-                                    <span>
-                                      {c.completedOn
-                                        ? `Completed ${formatDate(c.completedOn)}`
-                                        : 'No date'}
-                                    </span>
-                                    <span>{relativeDays(c.days)}</span>
-                                  </p>
-                                </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           </td>
                         </tr>

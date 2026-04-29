@@ -1,8 +1,9 @@
 // Four-card row at the top of the Overview page: workers, compliance %,
-// action count, and expiring-soon count. Tone (good/warn/bad) reacts to the
-// numbers so the eye is drawn to anything needing attention.
+// urgent count, and expiring-soon count. Tone (good/warn/bad) reacts to the
+// numbers so the eye is drawn to anything red.
 import { AlertTriangle, Clock, ShieldCheck, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { ExcelKPIs } from '../types'
 
@@ -26,6 +27,7 @@ function KPICard({ icon, label, value, sub, tone }: KPICardProps) {
 }
 
 export function KPIStrip({ kpis }: { kpis: ExcelKPIs }) {
+  const { t } = useTranslation()
   const compliancePct = kpis.overall_compliance_pct
   const complianceTone =
     compliancePct >= 90 ? 'tone-good' : compliancePct >= 70 ? 'tone-warn' : 'tone-bad'
@@ -34,29 +36,35 @@ export function KPIStrip({ kpis }: { kpis: ExcelKPIs }) {
     <section className="excel-kpi-grid">
       <KPICard
         icon={<Users size={20} />}
-        label="Active workers"
+        label={t('kpi.active_workers')}
         value={kpis.active_workers}
-        sub={`${kpis.total_workers} total · ${kpis.total_contractors} contractors`}
+        sub={t('kpi.active_workers_sub', {
+          total: kpis.total_workers,
+          contractors: kpis.total_contractors,
+        })}
       />
       <KPICard
         icon={<ShieldCheck size={20} />}
-        label="Overall compliance"
+        label={t('kpi.compliance')}
         value={`${compliancePct.toFixed(1)}%`}
-        sub={`${kpis.green_count} current of ${kpis.green_count + kpis.yellow_count + kpis.red_count} dated certs`}
+        sub={t('kpi.compliance_sub', {
+          green: kpis.green_count,
+          dated: kpis.green_count + kpis.yellow_count + kpis.red_count,
+        })}
         tone={complianceTone}
       />
       <KPICard
         icon={<AlertTriangle size={20} />}
-        label="Needs action"
+        label={t('kpi.urgent')}
         value={kpis.red_count}
-        sub="Urgent or overdue"
+        sub={t('kpi.urgent_sub')}
         tone={kpis.red_count > 0 ? 'tone-bad' : 'tone-good'}
       />
       <KPICard
         icon={<Clock size={20} />}
-        label="Expiring soon (31-60d)"
+        label={t('kpi.expiring')}
         value={kpis.yellow_count}
-        sub="Plan ahead"
+        sub={t('kpi.expiring_sub')}
         tone={kpis.yellow_count > 0 ? 'tone-warn' : 'tone-good'}
       />
     </section>

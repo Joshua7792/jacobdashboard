@@ -3,6 +3,7 @@
 // content as children — no boilerplate per page.
 import { AlertTriangle } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { useDashboard } from '../context/DashboardContext'
 import { RefreshBar } from './RefreshBar'
@@ -16,8 +17,6 @@ type PageShellProps = {
   showRefreshBar?: boolean
 }
 
-// Wraps every page so they share the same header rhythm and refresh control.
-// Also handles initial loading + load error states uniformly.
 export function PageShell({
   title,
   eyebrow,
@@ -26,20 +25,21 @@ export function PageShell({
   children,
   showRefreshBar = true,
 }: PageShellProps) {
+  const { t } = useTranslation()
   const { data, loading, error, reload } = useDashboard()
 
   if (loading && !data) {
-    return <div className="loading">Loading dashboard from Excel…</div>
+    return <div className="loading">{t('loading.fetching')}</div>
   }
 
   if (error && !data) {
     return (
       <section className="surface excel-error-card">
         <AlertTriangle size={24} />
-        <h3>Could not load the workbook</h3>
+        <h3>{t('error.title')}</h3>
         <p>{error}</p>
         <button className="primary-button" onClick={() => reload()} type="button">
-          Try again
+          {t('error.retry')}
         </button>
       </section>
     )

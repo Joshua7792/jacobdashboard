@@ -81,6 +81,7 @@ def dashboard() -> dict:
     return {
         "kpis": jsonable_encoder(wb.kpis),
         "action_list": jsonable_encoder(wb.action_list),
+        "workers": jsonable_encoder(wb.workers),
         "contractors": jsonable_encoder(wb.contractors),
         "heatmap": jsonable_encoder(wb.heatmap),
         "cert_demand": jsonable_encoder(wb.cert_demand),

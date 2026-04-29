@@ -1,11 +1,13 @@
 // Top-of-page bar showing the current workbook + last-loaded time, with a
 // Refresh button that calls /api/excel/refresh and re-reads the dashboard.
 import { AlertTriangle, Clock, FileSpreadsheet, RefreshCw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { useDashboard } from '../context/DashboardContext'
 import { formatTime } from '../lib/format'
 
 export function RefreshBar() {
+  const { t, i18n } = useTranslation()
   const { data, refreshing, error, refresh } = useDashboard()
   if (!data) return null
 
@@ -18,10 +20,11 @@ export function RefreshBar() {
           <FileSpreadsheet size={18} />
         </span>
         <div>
-          <p className="eyebrow">Workbook</p>
+          <p className="eyebrow">{t('refresh.workbook')}</p>
           <strong>{fileName}</strong>
           <p className="excel-refresh-meta">
-            <Clock size={13} /> Last loaded {formatTime(data.workbook.loaded_at)}
+            <Clock size={13} />{' '}
+            {t('refresh.last_loaded', { time: formatTime(data.workbook.loaded_at, i18n.language) })}
           </p>
         </div>
       </div>
@@ -32,7 +35,7 @@ export function RefreshBar() {
         disabled={refreshing}
       >
         <RefreshCw size={16} className={refreshing ? 'spin' : ''} />
-        {refreshing ? 'Refreshing…' : 'Refresh'}
+        {refreshing ? t('refresh.button_loading') : t('refresh.button_idle')}
       </button>
       {error ? (
         <div className="excel-refresh-error">

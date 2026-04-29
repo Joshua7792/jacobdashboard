@@ -5,14 +5,9 @@
 // contractors and certs need attention. Deep dives live on dedicated pages
 // linked via the "See all" arrows so the overview stays scannable.
 import { ArrowRight, TrendingDown } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import {
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-} from 'recharts'
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 
 import { KPIStrip } from '../components/KPIStrip'
 import { PageShell } from '../components/PageShell'
@@ -21,6 +16,7 @@ import { useDashboard } from '../context/DashboardContext'
 import { STATUS_COLOR, formatDate, relativeDays, visualStatus } from '../lib/format'
 
 export function OverviewPage() {
+  const { t, i18n } = useTranslation()
   const { data } = useDashboard()
   if (!data) return null
 
@@ -28,10 +24,10 @@ export function OverviewPage() {
 
   // Donut data: cert status breakdown.
   const donutData = [
-    { name: 'Current', value: kpis.green_count, key: 'green' as const },
-    { name: 'Renew soon', value: kpis.yellow_count, key: 'yellow' as const },
-    { name: 'Needs action', value: kpis.red_count, key: 'red' as const },
-    { name: 'Missing', value: kpis.blank_count, key: 'blank' as const },
+    { name: t('status.current'), value: kpis.green_count, key: 'green' as const },
+    { name: t('status.renew_soon'), value: kpis.yellow_count, key: 'yellow' as const },
+    { name: t('status.urgent'), value: kpis.red_count, key: 'red' as const },
+    { name: t('status.missing'), value: kpis.blank_count, key: 'blank' as const },
   ].filter((d) => d.value > 0)
   const donutTotal = donutData.reduce((sum, d) => sum + d.value, 0)
 
@@ -50,9 +46,9 @@ export function OverviewPage() {
 
   return (
     <PageShell
-      eyebrow="Project control center"
-      title="Overview"
-      description="Compliance status across all contractors and workers, live from the workbook."
+      eyebrow={t('overview.eyebrow')}
+      title={t('overview.title')}
+      description={t('overview.description')}
     >
       <KPIStrip kpis={kpis} />
 
@@ -61,12 +57,12 @@ export function OverviewPage() {
         <section className="surface card-padded">
           <header className="excel-section-head">
             <div>
-              <p className="eyebrow">Compliance breakdown</p>
-              <h3>Where every cert sits today</h3>
+              <p className="eyebrow">{t('overview.compliance_eyebrow')}</p>
+              <h3>{t('overview.compliance_title')}</h3>
             </div>
           </header>
           {donutTotal === 0 ? (
-            <p className="excel-empty">No certs assigned yet.</p>
+            <p className="excel-empty">{t('overview.compliance_empty')}</p>
           ) : (
             <div className="overview-donut-wrap">
               <ResponsiveContainer width="100%" height={220}>
@@ -101,62 +97,65 @@ export function OverviewPage() {
           )}
         </section>
 
-        {/* Contractor leaderboard (lowest compliance first) */}
+        {/* Contractor leaderboard */}
         <section className="surface card-padded">
           <header className="excel-section-head">
             <div>
-              <p className="eyebrow">Contractors needing attention</p>
-              <h3>Lowest compliance first</h3>
+              <p className="eyebrow">{t('overview.leaderboard_eyebrow')}</p>
+              <h3>{t('overview.leaderboard_title')}</h3>
             </div>
             <Link to="/contractors" className="link-arrow">
-              See all <ArrowRight size={14} />
+              {t('overview.see_all')} <ArrowRight size={14} />
             </Link>
           </header>
           {weakestContractors.length === 0 ? (
-            <p className="excel-empty">No contractors yet.</p>
+            <p className="excel-empty">{t('overview.leaderboard_empty')}</p>
           ) : (
             <ul className="leaderboard-list">
-              {weakestContractors.map((c) => (
-                <li key={c.name} className="leaderboard-row">
-                  <div className="leaderboard-name">
-                    <strong>{c.name}</strong>
-                    <span>
-                      {c.worker_count} {c.worker_count === 1 ? 'worker' : 'workers'} ·{' '}
-                      {c.weakest_cert ?? '—'}
-                    </span>
-                  </div>
-                  <div className="leaderboard-bar">
-                    <StatusStackedBar
-                      green={c.green_count}
-                      yellow={c.yellow_count}
-                      red={c.red_count}
-                      blank={c.blank_count}
-                    />
-                  </div>
-                  <strong className="leaderboard-pct">
-                    {c.compliance_pct.toFixed(1)}%
-                  </strong>
-                </li>
-              ))}
+              {weakestContractors.map((c) => {
+                const workersLabel =
+                  c.worker_count === 1
+                    ? t('overview.leaderboard_workers', { count: c.worker_count })
+                    : t('overview.leaderboard_workers_plural', { count: c.worker_count })
+                return (
+                  <li key={c.name} className="leaderboard-row">
+                    <div className="leaderboard-name">
+                      <strong>{c.name}</strong>
+                      <span>
+                        {workersLabel} · {c.weakest_cert ?? '—'}
+                      </span>
+                    </div>
+                    <div className="leaderboard-bar">
+                      <StatusStackedBar
+                        green={c.green_count}
+                        yellow={c.yellow_count}
+                        red={c.red_count}
+                        blank={c.blank_count}
+                      />
+                    </div>
+                    <strong className="leaderboard-pct">{c.compliance_pct.toFixed(1)}%</strong>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </section>
       </div>
 
       <div className="overview-row-2">
-        {/* Top action items snapshot */}
+        {/* Top urgent items snapshot */}
         <section className="surface card-padded">
           <header className="excel-section-head">
             <div>
-              <p className="eyebrow">Top action items</p>
-              <h3>Five items closest to deadline</h3>
+              <p className="eyebrow">{t('overview.actions_eyebrow')}</p>
+              <h3>{t('overview.actions_title')}</h3>
             </div>
             <Link to="/actions" className="link-arrow">
-              Open Action Center <ArrowRight size={14} />
+              {t('overview.actions_open')} <ArrowRight size={14} />
             </Link>
           </header>
           {topActions.length === 0 ? (
-            <p className="excel-empty">Nothing urgent. Everything in scope is current.</p>
+            <p className="excel-empty">{t('overview.actions_empty')}</p>
           ) : (
             <ul className="overview-action-list">
               {topActions.map((item, idx) => (
@@ -168,8 +167,8 @@ export function OverviewPage() {
                     <p>{item.cert_name}</p>
                   </div>
                   <div className="overview-action-meta">
-                    <span>{relativeDays(item.days_until_anniversary)}</span>
-                    <small>{formatDate(item.anniversary)}</small>
+                    <span>{relativeDays(item.days_until_anniversary, t)}</span>
+                    <small>{formatDate(item.anniversary, i18n.language)}</small>
                   </div>
                 </li>
               ))}
@@ -181,15 +180,15 @@ export function OverviewPage() {
         <section className="surface card-padded">
           <header className="excel-section-head">
             <div>
-              <p className="eyebrow">Coverage gaps</p>
-              <h3>Five certs with lowest coverage</h3>
+              <p className="eyebrow">{t('overview.gaps_eyebrow')}</p>
+              <h3>{t('overview.gaps_title')}</h3>
             </div>
             <Link to="/certifications" className="link-arrow">
-              See all <ArrowRight size={14} />
+              {t('overview.see_all')} <ArrowRight size={14} />
             </Link>
           </header>
           {weakestCerts.length === 0 ? (
-            <p className="excel-empty">No cert demand data yet.</p>
+            <p className="excel-empty">{t('overview.gaps_empty')}</p>
           ) : (
             <ul className="cert-demand-list">
               {weakestCerts.map((c) => (
@@ -219,7 +218,7 @@ export function OverviewPage() {
       {issues.length > 0 && (
         <section className="surface excel-issues-card">
           <header>
-            <strong>Data quality notes</strong>
+            <strong>{t('overview.issues_title')}</strong>
           </header>
           <ul>
             {issues.map((issue, i) => (

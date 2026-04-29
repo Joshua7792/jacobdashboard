@@ -6,6 +6,7 @@
 // first when the user wants to triage.
 import { Mail, Phone, TrendingDown, TrendingUp } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { PageShell } from '../components/PageShell'
 import { StatusStackedBar } from '../components/StatusPill'
@@ -14,6 +15,7 @@ import { useDashboard } from '../context/DashboardContext'
 type SortMode = 'compliance-asc' | 'compliance-desc' | 'workers-desc' | 'name'
 
 export function ContractorsPage() {
+  const { t } = useTranslation()
   const { data } = useDashboard()
   const [sort, setSort] = useState<SortMode>('compliance-asc')
   const contractors = data?.contractors ?? []
@@ -39,24 +41,24 @@ export function ContractorsPage() {
 
   return (
     <PageShell
-      eyebrow="Contractors"
-      title="Per-contractor scorecards"
-      description="One card per contractor: workers, compliance, and the cert most often missing or red."
+      eyebrow={t('contractors.eyebrow')}
+      title={t('contractors.title')}
+      description={t('contractors.description')}
       actions={
         <select
-          aria-label="Sort contractors"
+          aria-label={t('filter.sort_contractors')}
           value={sort}
           onChange={(e) => setSort(e.target.value as SortMode)}
         >
-          <option value="compliance-asc">Lowest compliance first</option>
-          <option value="compliance-desc">Highest compliance first</option>
-          <option value="workers-desc">Most workers</option>
-          <option value="name">Name (A–Z)</option>
+          <option value="compliance-asc">{t('contractors.sort_compliance_asc')}</option>
+          <option value="compliance-desc">{t('contractors.sort_compliance_desc')}</option>
+          <option value="workers-desc">{t('contractors.sort_workers_desc')}</option>
+          <option value="name">{t('contractors.sort_name')}</option>
         </select>
       }
     >
       {sorted.length === 0 ? (
-        <p className="excel-empty">No contractors yet.</p>
+        <p className="excel-empty">{t('contractors.empty')}</p>
       ) : (
         <div className="contractor-grid">
           {sorted.map((c) => {
@@ -71,7 +73,7 @@ export function ContractorsPage() {
               <article key={c.name} className={`surface contractor-card ${tone}`}>
                 <header className="contractor-card-head">
                   <div>
-                    <p className="eyebrow">{c.specialty ?? 'Contractor'}</p>
+                    <p className="eyebrow">{c.specialty ?? t('contractors.default_specialty')}</p>
                     <h3>{c.name}</h3>
                   </div>
                   <div className="contractor-card-pct">
@@ -82,19 +84,19 @@ export function ContractorsPage() {
 
                 <div className="contractor-card-counts">
                   <div>
-                    <span className="eyebrow">Workers</span>
+                    <span className="eyebrow">{t('contractors.card_workers')}</span>
                     <strong>{c.worker_count}</strong>
                   </div>
                   <div>
-                    <span className="eyebrow">Current</span>
+                    <span className="eyebrow">{t('contractors.card_current')}</span>
                     <strong className="tone-good-text">{c.green_count}</strong>
                   </div>
                   <div>
-                    <span className="eyebrow">Soon</span>
+                    <span className="eyebrow">{t('contractors.card_soon')}</span>
                     <strong className="tone-warn-text">{c.yellow_count}</strong>
                   </div>
                   <div>
-                    <span className="eyebrow">Action</span>
+                    <span className="eyebrow">{t('contractors.card_urgent')}</span>
                     <strong className="tone-bad-text">{c.red_count}</strong>
                   </div>
                 </div>
@@ -110,7 +112,7 @@ export function ContractorsPage() {
                 <div className="contractor-card-footer">
                   {c.weakest_cert && (
                     <p className="contractor-weakest">
-                      <span className="eyebrow">Weakest cert</span>
+                      <span className="eyebrow">{t('contractors.weakest')}</span>
                       <strong>{c.weakest_cert}</strong>
                     </p>
                   )}
