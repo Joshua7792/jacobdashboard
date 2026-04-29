@@ -70,7 +70,7 @@ export function ShellLayout({ children }: ShellLayoutProps) {
               <strong>{data.kpis.overall_compliance_pct.toFixed(1)}%</strong>
             </div>
             <div className="sidebar-stat-row">
-              <span>Urgent</span>
+              <span>Needs action</span>
               <strong className={data.kpis.red_count > 0 ? 'tone-bad-text' : ''}>
                 {data.kpis.red_count}
               </strong>

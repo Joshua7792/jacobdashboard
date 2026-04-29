@@ -20,7 +20,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.encoders import jsonable_encoder
 
-from ..services import excel_reader
+from ..services import excel_reader, workbook_sync
 
 router = APIRouter(prefix="/api/excel", tags=["excel"])
 
@@ -124,10 +124,25 @@ def certifications() -> list[dict]:
 
 @router.post("/refresh")
 def refresh() -> dict:
+    sync_actions = {}
+    try:
+        sync_actions = workbook_sync.sync_workbook_file(_resolve_workbook_path())
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=423,
+            detail=(
+                "Workbook is open in Excel. Close it, then refresh again so new "
+                "certification rows can be added to Tracker."
+            ),
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
     wb = _get_workbook(force=True)
     return {
         "ok": True,
         "loaded_at": wb.loaded_at.isoformat(),
         "last_modified": wb.last_modified.isoformat(),
         "kpis": jsonable_encoder(wb.kpis),
+        "sync_actions": sync_actions,
     }

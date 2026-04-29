@@ -94,7 +94,7 @@ export function ContractorsPage() {
                     <strong className="tone-warn-text">{c.yellow_count}</strong>
                   </div>
                   <div>
-                    <span className="eyebrow">Urgent</span>
+                    <span className="eyebrow">Action</span>
                     <strong className="tone-bad-text">{c.red_count}</strong>
                   </div>
                 </div>

@@ -12,31 +12,61 @@ import { useMemo, useState } from 'react'
 import { PageShell } from '../components/PageShell'
 import { StatusPill } from '../components/StatusPill'
 import { useDashboard } from '../context/DashboardContext'
-import { formatDate, relativeDays } from '../lib/format'
+import { formatDate, relativeDays, visualStatus } from '../lib/format'
+import type { ExcelVisualStatus } from '../types'
 
-type StatusFilter = 'all' | 'red' | 'yellow'
+type StatusFilter = 'all' | Extract<ExcelVisualStatus, 'yellow' | 'orange' | 'red'>
+type WorkerStatusFilter = 'active' | 'inactive' | 'onboarding' | 'all'
 type DaysBucket = 'all' | 'past' | 'le7' | 'le30' | 'le60'
+
+function isActiveWorkerStatus(status: string | undefined) {
+  const normalized = (status ?? 'active').toLowerCase()
+  return normalized === 'active'
+}
+
+function workerStatusLabel(status: string | undefined) {
+  const normalized = (status ?? 'active').toLowerCase()
+  if (normalized === 'active') return 'Active'
+  if (normalized === 'onboarding') return 'Onboarding'
+  if (normalized === 'inactive') return 'Inactive'
+  return status ?? 'Active'
+}
 
 export function ActionsPage() {
   const { data } = useDashboard()
   const [contractorFilter, setContractorFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [workerStatusFilter, setWorkerStatusFilter] = useState<WorkerStatusFilter>('active')
   const [daysBucket, setDaysBucket] = useState<DaysBucket>('all')
   const [search, setSearch] = useState('')
 
   const items = data?.action_list ?? []
 
+  const scopedItems = useMemo(
+    () =>
+      workerStatusFilter === 'all'
+        ? items
+        : items.filter((i) => (i.worker_status ?? 'active').toLowerCase() === workerStatusFilter),
+    [items, workerStatusFilter],
+  )
+
   const contractors = useMemo(
-    () => Array.from(new Set(items.map((i) => i.contractor))).sort(),
-    [items],
+    () => Array.from(new Set(scopedItems.map((i) => i.contractor))).sort(),
+    [scopedItems],
   )
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return items.filter((i) => {
+    return scopedItems.filter((i) => {
       if (contractorFilter !== 'all' && i.contractor !== contractorFilter) return false
-      if (statusFilter !== 'all' && i.status !== statusFilter) return false
-      if (q && !i.worker.toLowerCase().includes(q) && !i.cert_name.toLowerCase().includes(q)) {
+      const displayStatus = visualStatus(i.status, i.days_until_anniversary)
+      if (statusFilter !== 'all' && displayStatus !== statusFilter) return false
+      if (
+        q &&
+        !i.worker.toLowerCase().includes(q) &&
+        !i.cert_name.toLowerCase().includes(q) &&
+        !workerStatusLabel(i.worker_status).toLowerCase().includes(q)
+      ) {
         return false
       }
       const d = i.days_until_anniversary
@@ -49,10 +79,17 @@ export function ActionsPage() {
       }
       return true
     })
-  }, [items, contractorFilter, statusFilter, daysBucket, search])
+  }, [scopedItems, contractorFilter, statusFilter, daysBucket, search])
 
-  const redCount = filtered.filter((i) => i.status === 'red').length
-  const yellowCount = filtered.filter((i) => i.status === 'yellow').length
+  const overdueCount = filtered.filter(
+    (i) => visualStatus(i.status, i.days_until_anniversary) === 'red',
+  ).length
+  const urgentCount = filtered.filter(
+    (i) => visualStatus(i.status, i.days_until_anniversary) === 'orange',
+  ).length
+  const yellowCount = filtered.filter(
+    (i) => visualStatus(i.status, i.days_until_anniversary) === 'yellow',
+  ).length
 
   return (
     <PageShell
@@ -65,12 +102,16 @@ export function ActionsPage() {
           <div className="action-summary-item">
             <p className="eyebrow">Showing</p>
             <strong>
-              {filtered.length} of {items.length}
+              {filtered.length} of {scopedItems.length}
             </strong>
           </div>
           <div className="action-summary-item">
+            <p className="eyebrow">Overdue</p>
+            <strong className="tone-bad-text">{overdueCount}</strong>
+          </div>
+          <div className="action-summary-item">
             <p className="eyebrow">Urgent</p>
-            <strong className="tone-bad-text">{redCount}</strong>
+            <strong className="tone-urgent-text">{urgentCount}</strong>
           </div>
           <div className="action-summary-item">
             <p className="eyebrow">Renew soon</p>
@@ -101,12 +142,23 @@ export function ActionsPage() {
             ))}
           </select>
           <select
-            aria-label="Filter by status"
+            aria-label="Filter by worker status"
+            value={workerStatusFilter}
+            onChange={(e) => setWorkerStatusFilter(e.target.value as WorkerStatusFilter)}
+          >
+            <option value="active">Active workers</option>
+            <option value="inactive">Inactive workers</option>
+            <option value="onboarding">Onboarding workers</option>
+            <option value="all">All worker statuses</option>
+          </select>
+          <select
+            aria-label="Filter by certification status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
           >
-            <option value="all">All statuses</option>
-            <option value="red">Urgent only</option>
+            <option value="all">All cert statuses</option>
+            <option value="red">Overdue only</option>
+            <option value="orange">Urgent only</option>
             <option value="yellow">Renew soon only</option>
           </select>
           <div className="filter-chips">
@@ -151,9 +203,20 @@ export function ActionsPage() {
                 {filtered.map((item, idx) => (
                   <tr key={`${item.worker}-${item.cert_name}-${idx}`}>
                     <td>
-                      <StatusPill status={item.status} />
+                      <StatusPill status={visualStatus(item.status, item.days_until_anniversary)} />
                     </td>
-                    <td className="excel-action-worker">{item.worker}</td>
+                    <td className="excel-action-worker">
+                      <strong>{item.worker}</strong>
+                      <span
+                        className={`worker-status-badge ${
+                          isActiveWorkerStatus(item.worker_status)
+                            ? 'worker-status-active'
+                            : 'worker-status-inactive'
+                        }`}
+                      >
+                        {workerStatusLabel(item.worker_status)}
+                      </span>
+                    </td>
                     <td className="excel-action-contractor">{item.contractor}</td>
                     <td>
                       <span className="excel-action-cert">{item.cert_name}</span>

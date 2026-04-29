@@ -76,6 +76,31 @@ EXTRA_ADDITIONAL_CERTS = [
     ("Formwork & Shoring", 0),
     ("Silica Exposure", 0),
     ("Concrete & Masonry", 0),
+    ("Equipment Training", 0),
+    ("OSHA 30 501", 0),
+    ("OSHA 30 511", 0),
+]
+
+REQUIRED_BASELINE_CERTS = [
+    ("Protección Contra Caídas", "HSE Required", 1),
+    ("Flama Expuesta", "HSE Required", 1),
+    ("Espacios Confinados", "HSE Required", 1),
+    ("Manejo de Equipo Motorizado", "HSE Required", 3),
+    ("Excavación o Zanja", "HSE Required", 1),
+    ("Manejo de Tijeras (Scissor Lift)", "HSE Required", 3),
+    ("Seguridad Eléctrica", "HSE Required", 1),
+    ("Lockout", "HSE Required", 1),
+    ("Manejo de Grúas", "HSE Required", 3),
+    ("Escaleras", "HSE Required", 3),
+    ("Andamios", "HSE Required", 3),
+    ("Trabajos con Plomo o Asbesto", "HSE Required", 1),
+    ("Comunicación de Riesgos", "HSE Required", 1),
+    ("Inducción Jacobs/Lilly", "Additional Training", 1),
+    ("OSHA 40Hr HAZWOPER", "Additional Training", 0),
+    ("OSHA 8Hr Refresher", "Additional Training", 1),
+    ("Drilling Safety", "Additional Training", 3),
+    ("Utility Locating", "Additional Training", 1),
+    *[(name, "Additional Training", validity) for name, validity in EXTRA_ADDITIONAL_CERTS],
 ]
 
 PAGE2_HEADER_ALIASES = {
@@ -95,6 +120,13 @@ PAGE2_HEADER_ALIASES = {
     "concrete masonry": "Concrete & Masonry",
     "concrete & mansory": "Concrete & Masonry",
     "concrete mansory": "Concrete & Masonry",
+    "equipment training": "Equipment Training",
+    "osha 30 501": "OSHA 30 501",
+    "osha30501": "OSHA 30 501",
+    "osha 30-501": "OSHA 30 501",
+    "osha 30 511": "OSHA 30 511",
+    "osha30511": "OSHA 30 511",
+    "osha 30-511": "OSHA 30 511",
     # OSHA 40Hr HAZWOPER often comes through with a misread / typo
     # ("HOZWOPER") and varying spacing because the page-2 header is rotated.
     "osha 40hr hazwoper": "OSHA 40Hr HAZWOPER",
@@ -165,9 +197,11 @@ def build_cert_alias_map(ws: Worksheet) -> dict[str, str]:
         if not name:
             continue
         aliases[normalize(name)] = name
+        aliases[normalize_compact(name)] = name
         # Add a few common variants
         compact = normalize(re.sub(r"[()]", "", name))
         aliases[compact] = name
+        aliases[normalize_compact(compact)] = name
     # Known alternate spellings
     extras = {
         "osha 40hr hozwoper": "OSHA 40Hr HAZWOPER",
@@ -175,13 +209,22 @@ def build_cert_alias_map(ws: Worksheet) -> dict[str, str]:
         "osha40hr hazwoper": "OSHA 40Hr HAZWOPER",
         "osha 8hr refresher": "OSHA 8Hr Refresher",
         "osha8hr refresher": "OSHA 8Hr Refresher",
+        "osha 8 hr refresher": "OSHA 8Hr Refresher",
+        "osha8hrefresher": "OSHA 8Hr Refresher",
+        "flama expuesta": "Flama Expuesta",
+        "flama": "Flama Expuesta",
+        "flama exp": "Flama Expuesta",
+        "llama expuesta": "Flama Expuesta",
         "manejo de tijeras scissor lift": "Manejo de Tijeras (Scissor Lift)",
         "manejo de tijeras": "Manejo de Tijeras (Scissor Lift)",
         "scissor lift": "Manejo de Tijeras (Scissor Lift)",
         "excavacion o zanja": "Excavación o Zanja",
         "excavacion": "Excavación o Zanja",
         "trabajos con plomo o asbesto": "Trabajos con Plomo o Asbesto",
+        "trabajo con plomo o asbesto": "Trabajos con Plomo o Asbesto",
         "plomo o asbesto": "Trabajos con Plomo o Asbesto",
+        "plomo asbesto": "Trabajos con Plomo o Asbesto",
+        "lead asbestos": "Trabajos con Plomo o Asbesto",
         "induccion jacobs lilly": "Inducción Jacobs/Lilly",
         "induccion jacobs/lilly": "Inducción Jacobs/Lilly",
         "induccion": "Inducción Jacobs/Lilly",
@@ -204,6 +247,13 @@ def build_cert_alias_map(ws: Worksheet) -> dict[str, str]:
         "concrete masonry": "Concrete & Masonry",
         "concrete & mansory": "Concrete & Masonry",
         "concrete mansory": "Concrete & Masonry",
+        "equipment training": "Equipment Training",
+        "osha 30 501": "OSHA 30 501",
+        "osha30501": "OSHA 30 501",
+        "osha 30-501": "OSHA 30 501",
+        "osha 30 511": "OSHA 30 511",
+        "osha30511": "OSHA 30 511",
+        "osha 30-511": "OSHA 30 511",
     }
     for k, v in extras.items():
         aliases.setdefault(k, v)
@@ -218,6 +268,9 @@ def match_cert(header: str, aliases: dict[str, str]) -> Optional[str]:
     key = normalize(header)
     if not key:
         return None
+    no_ws = normalize_compact(header)
+    if no_ws in aliases:
+        return aliases[no_ws]
     if key in aliases:
         return aliases[key]
     # Remove parentheses and try again
@@ -225,7 +278,6 @@ def match_cert(header: str, aliases: dict[str, str]) -> Optional[str]:
     if compact in aliases:
         return aliases[compact]
     # Whitespace-insensitive: "osha 8 hr refresher" -> "osha8hrrefresher"
-    no_ws = re.sub(r"\s+", "", key)
     for alias_key, canonical in aliases.items():
         if re.sub(r"\s+", "", alias_key) == no_ws:
             return canonical
@@ -838,6 +890,134 @@ def tracker_cert_columns(ws: Worksheet) -> dict[str, int]:
     return mapping
 
 
+def tracker_last_header_col(ws: Worksheet) -> int:
+    """Return the last Tracker column that has a real row-2 header."""
+    for col in range(ws.max_column, 2, -1):
+        if ws.cell(row=2, column=col).value not in (None, ""):
+            return col
+    return 2
+
+
+def tracker_styled_template_col(ws: Worksheet) -> int:
+    """Find a real styled Tracker cert header to copy for future columns."""
+    for col in range(tracker_last_header_col(ws), 2, -1):
+        cell = ws.cell(row=2, column=col)
+        if cell.value not in (None, "") and cell.fill.fill_type:
+            return col
+    return 3
+
+
+def refresh_additional_training_banner(ws: Worksheet, end_col: int) -> None:
+    """Extend the Additional Training banner to the current final cert column."""
+    banner_start = next(
+        (
+            col
+            for col in range(3, ws.max_column + 1)
+            if ws.cell(row=1, column=col).value == "Additional Training"
+        ),
+        3,
+    )
+    banner_template = ws.cell(row=1, column=banner_start)
+
+    for merged_range in list(ws.merged_cells.ranges):
+        if (
+            merged_range.min_row == 1
+            and merged_range.max_row == 1
+            and merged_range.min_col == banner_start
+        ):
+            ws.unmerge_cells(str(merged_range))
+
+    if end_col >= banner_start:
+        ws.merge_cells(start_row=1, start_column=banner_start, end_row=1, end_column=end_col)
+        banner_cell = ws.cell(row=1, column=banner_start, value="Additional Training")
+        banner_cell._style = copy(banner_template._style)
+
+
+def remove_empty_tracker_header_gaps(ws: Worksheet) -> list[str]:
+    """Delete blank Tracker header columns that have no data beneath them."""
+    last_col = tracker_last_header_col(ws)
+    last_row = max(ws.max_row, 200)
+    empty_cols: list[int] = []
+    for col in range(3, last_col):
+        if ws.cell(row=2, column=col).value not in (None, ""):
+            continue
+        has_data = any(ws.cell(row=row, column=col).value not in (None, "") for row in range(3, last_row + 1))
+        if not has_data:
+            empty_cols.append(col)
+
+    if not empty_cols:
+        return []
+
+    banner_start = next(
+        (
+            col
+            for col in range(3, ws.max_column + 1)
+            if ws.cell(row=1, column=col).value == "Additional Training"
+        ),
+        3,
+    )
+    for merged_range in list(ws.merged_cells.ranges):
+        if (
+            merged_range.min_row == 1
+            and merged_range.max_row == 1
+            and merged_range.min_col == banner_start
+        ):
+            ws.unmerge_cells(str(merged_range))
+
+    deleted = []
+    for col in sorted(empty_cols, reverse=True):
+        deleted.append(get_column_letter(col))
+        ws.delete_cols(col, 1)
+
+    refresh_additional_training_banner(ws, tracker_last_header_col(ws))
+    return list(reversed(deleted))
+
+
+def normalize_tracker_column_styles(ws: Worksheet) -> list[str]:
+    """Repair cert columns whose headers/data lost the standard Tracker style."""
+    template_col = tracker_styled_template_col(ws)
+    header_template = ws.cell(row=2, column=template_col)
+    data_template = ws.cell(row=3, column=template_col)
+    last_col = tracker_last_header_col(ws)
+    last_row = max(ws.max_row, 200)
+    repaired: list[str] = []
+
+    for col in range(3, last_col + 1):
+        header = ws.cell(row=2, column=col)
+        if header.value in (None, "") or header.fill.fill_type:
+            continue
+        header._style = copy(header_template._style)
+        ws.column_dimensions[get_column_letter(col)].width = (
+            ws.column_dimensions[get_column_letter(template_col)].width or 14
+        )
+        for row in range(3, last_row + 1):
+            cell = ws.cell(row=row, column=col)
+            cell._style = copy(data_template._style)
+            cell.number_format = "mm/dd/yyyy"
+        repaired.append(get_column_letter(col))
+
+    return repaired
+
+
+def resolve_tracker_cert_column(cert_name: str, cert_columns: dict[str, int]) -> Optional[int]:
+    """Find a Tracker column for cert_name using exact, normalized, and
+    whitespace-insensitive matching.
+
+    This keeps variants like "OSHA 8Hr Refresher" and "OSHA 8 Hr Refresher"
+    pointed at the same workbook column.
+    """
+    if cert_name in cert_columns:
+        return cert_columns[cert_name]
+    target = normalize(cert_name)
+    target_compact = normalize_compact(cert_name)
+    for existing_name, col in cert_columns.items():
+        if normalize(existing_name) == target:
+            return col
+        if normalize_compact(existing_name) == target_compact:
+            return col
+    return None
+
+
 def add_tracker_conditional_formatting(
     ws: Worksheet, start_col: int, end_col: int, last_row: int
 ) -> None:
@@ -887,9 +1067,14 @@ def apply_renewal_color_rules(ws_tracker: Worksheet) -> None:
     A cert tile is colored only when it has a date. Empty cells stay blank.
     Coloring is based on days remaining until the cert's 1-year anniversary
     (cert_date + 12 months):
-      - GREEN  : more than 60 days remaining
+      - RED    : anniversary already passed (overdue)
+      - ORANGE : 30 days or fewer remaining (urgent, still in the future)
       - YELLOW : 31 to 60 days remaining
-      - RED    : 30 days or fewer remaining, or anniversary already passed
+      - GREEN  : more than 60 days remaining
+
+    Rule order matters because every rule has stopIfTrue=True: RED catches
+    expired cells first, so the broader ORANGE rule (<=30) only colors cells
+    that are still in the future.
 
     Applied to a wide static range (C3:AZ200) so future cert columns inherit
     the rules without re-running this helper.
@@ -905,19 +1090,32 @@ def apply_renewal_color_rules(ws_tracker: Worksheet) -> None:
     # CF differential fills use bgColor (not fgColor) for the actual cell color.
     green_fill = PatternFill(bgColor="C6EFCE", fill_type="solid")
     yellow_fill = PatternFill(bgColor="FFE699", fill_type="solid")
-    red_fill = PatternFill(bgColor="F8CBAD", fill_type="solid")
+    orange_fill = PatternFill(bgColor="F4B084", fill_type="solid")
+    red_fill = PatternFill(bgColor="FF0000", fill_type="solid")  # bright red
 
-    # 1) Has a date and <= 30 days remaining (or anniversary already passed) -> RED.
+    # 1) Has a date and anniversary already passed -> RED (expired).
     ws_tracker.conditional_formatting.add(
         matrix_range,
         FormulaRule(
-            formula=['AND(C3<>"",ISNUMBER(C3),(EDATE(C3,12)-TODAY())<=30)'],
+            formula=['AND(C3<>"",ISNUMBER(C3),(EDATE(C3,12)-TODAY())<0)'],
             fill=red_fill,
             stopIfTrue=True,
         ),
     )
 
-    # 2) Has a date and 31-60 days remaining -> YELLOW.
+    # 2) Has a date and <=30 days remaining -> ORANGE (urgent, still future).
+    #    The <0 case is already caught by rule 1 above, so this only matches
+    #    the 0..30 future window.
+    ws_tracker.conditional_formatting.add(
+        matrix_range,
+        FormulaRule(
+            formula=['AND(C3<>"",ISNUMBER(C3),(EDATE(C3,12)-TODAY())<=30)'],
+            fill=orange_fill,
+            stopIfTrue=True,
+        ),
+    )
+
+    # 3) Has a date and 31-60 days remaining -> YELLOW.
     ws_tracker.conditional_formatting.add(
         matrix_range,
         FormulaRule(
@@ -931,7 +1129,7 @@ def apply_renewal_color_rules(ws_tracker: Worksheet) -> None:
         ),
     )
 
-    # 3) Has a date and more than 60 days remaining -> GREEN.
+    # 4) Has a date and more than 60 days remaining -> GREEN.
     ws_tracker.conditional_formatting.add(
         matrix_range,
         FormulaRule(
@@ -953,22 +1151,17 @@ def ensure_tracker_column(ws_tracker: Worksheet, cert_name: str) -> bool:
     if cert_name in tracker_cert_columns(ws_tracker):
         return False
 
-    last_existing_col = ws_tracker.max_column
-    header_template = ws_tracker.cell(row=2, column=last_existing_col)
-    data_template = ws_tracker.cell(row=3, column=last_existing_col)
-    banner_start = next(
-        (col for col in range(3, ws_tracker.max_column + 1)
-         if ws_tracker.cell(row=1, column=col).value == "Additional Training"),
-        3,
-    )
-    banner_template = ws_tracker.cell(row=1, column=banner_start)
+    last_existing_col = tracker_last_header_col(ws_tracker)
+    template_col = tracker_styled_template_col(ws_tracker)
+    header_template = ws_tracker.cell(row=2, column=template_col)
+    data_template = ws_tracker.cell(row=3, column=template_col)
     last_row = max(ws_tracker.max_row, 200)
 
     new_col = last_existing_col + 1
     header_cell = ws_tracker.cell(row=2, column=new_col, value=cert_name)
     header_cell._style = copy(header_template._style)
 
-    width = ws_tracker.column_dimensions[get_column_letter(last_existing_col)].width
+    width = ws_tracker.column_dimensions[get_column_letter(template_col)].width
     ws_tracker.column_dimensions[get_column_letter(new_col)].width = width or 14
 
     for row in range(3, last_row + 1):
@@ -976,18 +1169,7 @@ def ensure_tracker_column(ws_tracker: Worksheet, cert_name: str) -> bool:
         cell._style = copy(data_template._style)
         cell.number_format = "mm/dd/yyyy"
 
-    for merged_range in list(ws_tracker.merged_cells.ranges):
-        if (
-            merged_range.min_row == 1
-            and merged_range.max_row == 1
-            and merged_range.min_col == banner_start
-        ):
-            ws_tracker.unmerge_cells(str(merged_range))
-    ws_tracker.merge_cells(
-        start_row=1, start_column=banner_start, end_row=1, end_column=new_col,
-    )
-    banner_cell = ws_tracker.cell(row=1, column=banner_start, value="Additional Training")
-    banner_cell._style = copy(banner_template._style)
+    refresh_additional_training_banner(ws_tracker, new_col)
 
     add_tracker_conditional_formatting(ws_tracker, new_col, new_col, last_row)
     return True
@@ -1105,7 +1287,9 @@ def sync_tracker_headers(ws_certs: Worksheet, ws_tracker: Worksheet) -> dict[str
             actions["converted_to_formula"].append(name)
         else:
             ensure_tracker_column(ws_tracker, name)
-            new_col = ws_tracker.max_column
+            new_col = resolve_tracker_cert_column(name, tracker_cert_columns(ws_tracker))
+            if new_col is None:
+                new_col = tracker_last_header_col(ws_tracker)
             ws_tracker.cell(2, new_col, value=f"=Certifications!A{certs_row}")
             actions["new_tracker_cols"].append(name)
 
@@ -1196,7 +1380,7 @@ def _replace_tracker_table_with_autofilter(ws_tracker: Worksheet) -> bool:
         changed = True
 
     last_row = max(ws_tracker.max_row, 200)
-    last_col = max(ws_tracker.max_column, 26)
+    last_col = max(tracker_last_header_col(ws_tracker), 26)
     new_ref = f"A2:{get_column_letter(last_col)}{last_row}"
     if ws_tracker.auto_filter.ref != new_ref:
         ws_tracker.auto_filter.ref = new_ref
@@ -1244,6 +1428,14 @@ def sync_workbook(wb) -> dict[str, list[str]]:
     ws_dashboard = wb["Dashboard"]
 
     result: dict[str, list[str]] = {}
+    removed_gaps = remove_empty_tracker_header_gaps(ws_tracker)
+    if removed_gaps:
+        result["tracker.removed_blank_header_columns"] = removed_gaps
+
+    repaired_columns = normalize_tracker_column_styles(ws_tracker)
+    if repaired_columns:
+        result["tracker.repaired_column_styles"] = repaired_columns
+
     tracker_actions = sync_tracker_headers(ws_certs, ws_tracker)
     dashboard_actions = sync_dashboard_rows(ws_certs, ws_dashboard)
 
@@ -1259,7 +1451,7 @@ def sync_workbook(wb) -> dict[str, list[str]]:
     # Re-apply the 1-year renewal color rules over the whole Tracker matrix.
     apply_renewal_color_rules(ws_tracker)
     result["tracker.renewal_rules_applied"] = [
-        ">90d=green | 31-90d=yellow | <=30d or past=red | empty=red"
+        ">60d=green | 31-60d=yellow | <=30d=orange | past=red | empty=blank"
     ]
 
     # Prefix keys so Tracker and Dashboard actions stay separate even when they
@@ -1287,33 +1479,35 @@ def clean_cert_header(raw: str) -> str:
 
 def ensure_required_certifications(ws_certs: Worksheet, ws_tracker: Worksheet) -> list[str]:
     existing_cert_names = {
-        normalize(str(row[0])): row[0]
+        normalize_compact(str(row[0])): row[0]
         for row in ws_certs.iter_rows(min_row=2, max_col=1, values_only=True)
         if row[0]
     }
     added = []
-    for cert_name, validity in EXTRA_ADDITIONAL_CERTS:
-        if normalize(cert_name) in existing_cert_names:
+    for cert_name, category, validity in REQUIRED_BASELINE_CERTS:
+        if normalize_compact(cert_name) in existing_cert_names:
             continue
         row = first_empty_row(ws_certs, key_col=1, start=2, limit=max(ws_certs.max_row + 50, 200))
         ws_certs.cell(row=row, column=1, value=cert_name)
-        ws_certs.cell(row=row, column=2, value="Additional Training")
+        ws_certs.cell(row=row, column=2, value=category)
         ws_certs.cell(row=row, column=3, value=validity)
         added.append(cert_name)
+        existing_cert_names[normalize_compact(cert_name)] = cert_name
 
     current_columns = tracker_cert_columns(ws_tracker)
-    missing_headers = [name for name, _ in EXTRA_ADDITIONAL_CERTS if name not in current_columns]
+    current_column_keys = {normalize_compact(name) for name in current_columns}
+    missing_headers = [
+        name
+        for name, _category, _validity in REQUIRED_BASELINE_CERTS
+        if normalize_compact(name) not in current_column_keys
+    ]
     if not missing_headers:
         return added
 
-    last_existing_col = ws_tracker.max_column
-    header_template = ws_tracker.cell(row=2, column=last_existing_col)
-    data_template = ws_tracker.cell(row=3, column=last_existing_col)
-    banner_start = next(
-        (col for col in range(3, ws_tracker.max_column + 1) if ws_tracker.cell(row=1, column=col).value == "Additional Training"),
-        3,
-    )
-    banner_template = ws_tracker.cell(row=1, column=banner_start)
+    last_existing_col = tracker_last_header_col(ws_tracker)
+    template_col = tracker_styled_template_col(ws_tracker)
+    header_template = ws_tracker.cell(row=2, column=template_col)
+    data_template = ws_tracker.cell(row=3, column=template_col)
     last_row = max(ws_tracker.max_row, 200)
 
     for offset, cert_name in enumerate(missing_headers, start=1):
@@ -1321,7 +1515,7 @@ def ensure_required_certifications(ws_certs: Worksheet, ws_tracker: Worksheet) -
         header_cell = ws_tracker.cell(row=2, column=col, value=cert_name)
         header_cell._style = copy(header_template._style)
 
-        width = ws_tracker.column_dimensions[get_column_letter(last_existing_col)].width
+        width = ws_tracker.column_dimensions[get_column_letter(template_col)].width
         ws_tracker.column_dimensions[get_column_letter(col)].width = width or 14
 
         for row in range(3, last_row + 1):
@@ -1329,26 +1523,13 @@ def ensure_required_certifications(ws_certs: Worksheet, ws_tracker: Worksheet) -
             cell._style = copy(data_template._style)
             cell.number_format = "mm/dd/yyyy"
 
-    for merged_range in list(ws_tracker.merged_cells.ranges):
-        if (
-            merged_range.min_row == 1
-            and merged_range.max_row == 1
-            and merged_range.min_col == banner_start
-        ):
-            ws_tracker.unmerge_cells(str(merged_range))
-    ws_tracker.merge_cells(
-        start_row=1,
-        start_column=banner_start,
-        end_row=1,
-        end_column=ws_tracker.max_column,
-    )
-    banner_cell = ws_tracker.cell(row=1, column=banner_start, value="Additional Training")
-    banner_cell._style = copy(banner_template._style)
+    last_added_col = last_existing_col + len(missing_headers)
+    refresh_additional_training_banner(ws_tracker, last_added_col)
 
     add_tracker_conditional_formatting(
         ws_tracker,
         last_existing_col + 1,
-        ws_tracker.max_column,
+        last_added_col,
         last_row,
     )
     return list(dict.fromkeys(added + missing_headers))
@@ -1523,10 +1704,10 @@ def import_pdf(pdf_path: Path) -> dict:
         # Update cert dates (newer wins)
         for header_name, dt in certs.items():
             canonical = match_cert(header_name, alias_map)
-            if not canonical or canonical not in cert_columns:
+            col = resolve_tracker_cert_column(canonical, cert_columns) if canonical else None
+            if not canonical or col is None:
                 stats["unmatched_headers"].add(header_name)
                 continue
-            col = cert_columns[canonical]
             cell = ws_tracker.cell(row=t_row, column=col)
             existing = cell.value
             if isinstance(existing, datetime):

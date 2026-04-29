@@ -1,6 +1,6 @@
 // Display helpers shared across pages.
 // All four are pure: same input → same output. Keep that property when adding.
-import type { ExcelStatus } from '../types'
+import type { ExcelStatus, ExcelVisualStatus } from '../types'
 
 export function formatDate(iso: string | null): string {
   if (!iso) return '—'
@@ -26,22 +26,30 @@ export function relativeDays(days: number | null): string {
   return `${Math.abs(days)}d ago`
 }
 
-export function statusLabel(s: ExcelStatus): string {
+export function visualStatus(status: ExcelStatus, days: number | null): ExcelVisualStatus {
+  if (status === 'red' && days !== null && days >= 0) return 'orange'
+  return status
+}
+
+export function statusLabel(s: ExcelVisualStatus): string {
   switch (s) {
     case 'green':
       return 'Current'
     case 'yellow':
       return 'Renew soon'
-    case 'red':
+    case 'orange':
       return 'Urgent'
+    case 'red':
+      return 'Overdue'
     default:
       return 'Missing'
   }
 }
 
-export const STATUS_COLOR: Record<ExcelStatus, string> = {
+export const STATUS_COLOR: Record<ExcelVisualStatus, string> = {
   green: '#22c55e',
   yellow: '#eab308',
   red: '#ef4444',
+  orange: '#f97316',
   blank: '#94a3b8',
 }

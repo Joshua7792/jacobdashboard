@@ -1186,6 +1186,10 @@ body {
   font-weight: 600;
 }
 
+.excel-action-worker strong {
+  display: block;
+}
+
 .excel-action-contractor {
   color: #475569;
   font-size: 0.82rem;
@@ -1206,6 +1210,26 @@ body {
 .excel-action-days {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.worker-status-badge {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.worker-status-active {
+  background: rgba(34, 197, 94, 0.14);
+  color: #166534;
+}
+
+.worker-status-inactive {
+  background: rgba(148, 163, 184, 0.18);
+  color: #475569;
 }
 
 .excel-empty {
@@ -1230,6 +1254,7 @@ body {
 .status-pill.status-green  { background: rgba(34, 197, 94, 0.16); color: #166534; }
 .status-pill.status-yellow { background: rgba(234, 179, 8, 0.22); color: #854d0e; }
 .status-pill.status-red    { background: rgba(239, 68, 68, 0.18); color: #991b1b; }
+.status-pill.status-orange    { background: rgba(239, 159, 68, 0.18); color: #99581b; }
 .status-pill.status-blank  { background: rgba(148, 163, 184, 0.18); color: #475569; }
 
 /* Heatmap ---------------------------------------------------- */
@@ -1320,6 +1345,7 @@ body {
 .excel-heatmap-cell.status-green  { background: rgba(34, 197, 94, 0.18); color: #14532d; }
 .excel-heatmap-cell.status-yellow { background: rgba(234, 179, 8, 0.22); color: #713f12; }
 .excel-heatmap-cell.status-red    { background: rgba(239, 68, 68, 0.20); color: #7f1d1d; }
+.excel-heatmap-cell.status-orange { background: rgba(249, 115, 22, 0.20); color: #9a3412; }
 .excel-heatmap-cell.status-blank  { background: rgba(148, 163, 184, 0.10); color: #94a3b8; }
 
 .excel-heatmap-cell-text {
@@ -1429,6 +1455,7 @@ body {
 
 .tone-good-text { color: #15803d; }
 .tone-warn-text { color: #a16207; }
+.tone-urgent-text { color: #c2410c; }
 .tone-bad-text  { color: #b91c1c; }
 
 /* Sidebar at-a-glance panel */
@@ -1894,6 +1921,7 @@ body {
 .worker-cert-tile.status-green  { border-left-color: #22c55e; }
 .worker-cert-tile.status-yellow { border-left-color: #eab308; }
 .worker-cert-tile.status-red    { border-left-color: #ef4444; }
+.worker-cert-tile.status-orange { border-left-color: #f97316; }
 .worker-cert-tile.status-blank  { border-left-color: #94a3b8; }
 
 .worker-cert-tile-head {
@@ -1918,8 +1946,173 @@ body {
 /* Cert coverage page                                           */
 /* ============================================================ */
 
-.cert-chart-wrap {
+.cert-priority-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cert-priority-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, auto);
+  gap: 18px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.cert-priority-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cert-priority-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.cert-priority-title strong {
+  font-size: 0.98rem;
+}
+
+.cert-priority-title span,
+.cert-table-category {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.cert-priority-strip {
+  display: flex;
   width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  overflow: hidden;
+}
+
+.cert-priority-strip span {
+  min-width: 3px;
+  height: 100%;
+}
+
+.cert-contractor-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cert-contractor-chips span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.72);
+  color: #475569;
+  font-size: 0.72rem;
+}
+
+.cert-priority-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(76px, 1fr));
+  gap: 8px;
+}
+
+.cert-mini-metric {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: white;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.cert-mini-metric span {
+  display: block;
+  color: #64748b;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.cert-mini-metric strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 1rem;
+}
+
+.cert-mini-metric.tone-good strong { color: #15803d; }
+.cert-mini-metric.tone-warn strong { color: #a16207; }
+.cert-mini-metric.tone-urgent strong { color: #c2410c; }
+.cert-mini-metric.tone-bad strong { color: #b91c1c; }
+
+.cert-lane-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.cert-lane header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.cert-lane header svg {
+  margin-top: 2px;
+  color: #1d4ed8;
+}
+
+.cert-lane h3 {
+  margin: 4px 0 0;
+  font-size: 1rem;
+}
+
+.cert-mini-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cert-mini-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.cert-mini-list li:last-child {
+  border-bottom: 0;
+}
+
+.cert-mini-list li div {
+  min-width: 0;
+}
+
+.cert-mini-list li strong:first-child {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+}
+
+.cert-mini-list li span {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.74rem;
+}
+
+.cert-mini-list > li > strong {
+  font-variant-numeric: tabular-nums;
 }
 
 .cert-table {
@@ -1936,8 +2129,34 @@ body {
 }
 
 .cert-table thead { background: rgba(15, 23, 42, 0.04); }
-.cert-table-category { color: #64748b; font-size: 0.82rem; }
 .cert-table-bar { min-width: 160px; }
+
+.cert-table-modern td:first-child strong,
+.cert-table-modern td:first-child span {
+  display: block;
+}
+
+.cert-table-modern td {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1180px) {
+  .cert-priority-row,
+  .cert-lane-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .cert-priority-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cert-priority-title {
+    flex-direction: column;
+    gap: 2px;
+  }
+}
 
 /* Heatmap page legend row */
 .heatmap-legend-row {

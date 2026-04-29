@@ -1,6 +1,6 @@
 // Heatmap page — full workers × certifications grid.
 //
-// Each cell is colored by status (green/yellow/red/blank); hovering shows
+// Each cell is colored by status (green/yellow/orange/red/blank); hovering shows
 // the completion date and days remaining. The first column is sticky so a
 // long horizontal scroll keeps worker names visible, and the cert headers
 // are written rotated 90° to fit narrow columns.
@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react'
 
 import { PageShell } from '../components/PageShell'
 import { useDashboard } from '../context/DashboardContext'
-import { formatDate, relativeDays } from '../lib/format'
+import { formatDate, relativeDays, visualStatus } from '../lib/format'
 import type { ExcelHeatmapRow } from '../types'
 
 type SortMode = 'compliance-asc' | 'name' | 'contractor'
@@ -103,7 +103,8 @@ export function HeatmapPage() {
           <div className="excel-heatmap-legend heatmap-legend-row">
             <span className="status-pill status-green">Current</span>
             <span className="status-pill status-yellow">Renew soon</span>
-            <span className="status-pill status-red">Urgent</span>
+            <span className="status-pill status-orange">Urgent</span>
+            <span className="status-pill status-red">Overdue</span>
             <span className="status-pill status-blank">Missing</span>
           </div>
           <div
@@ -148,7 +149,7 @@ function RowFragment({ row }: { row: ExcelHeatmapRow }) {
       {row.statuses.map((cell, cIdx) => (
         <div
           key={`c-${cIdx}`}
-          className={`excel-heatmap-cell status-${cell.status}`}
+          className={`excel-heatmap-cell status-${visualStatus(cell.status, cell.days_until_anniversary)}`}
           title={
             cell.completed_on
               ? `Completed ${formatDate(cell.completed_on)} · ${relativeDays(cell.days_until_anniversary)}`

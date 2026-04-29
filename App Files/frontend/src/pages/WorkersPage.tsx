@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react'
 import { PageShell } from '../components/PageShell'
 import { StatusPill, StatusStackedBar } from '../components/StatusPill'
 import { useDashboard } from '../context/DashboardContext'
-import { formatDate, relativeDays } from '../lib/format'
+import { formatDate, relativeDays, visualStatus } from '../lib/format'
 import type { ExcelStatus } from '../types'
 
 type SortMode = 'compliance-asc' | 'compliance-desc' | 'name' | 'urgent-desc'
@@ -174,7 +174,7 @@ export function WorkersPage() {
                   <th>Contractor</th>
                   <th>Compliance</th>
                   <th>Status mix</th>
-                  <th>Urgent</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -216,10 +216,10 @@ export function WorkersPage() {
                           <td colSpan={6}>
                             <div className="worker-cert-grid">
                               {w.certs.map((c) => (
-                                <div key={c.name} className={`worker-cert-tile status-${c.status}`}>
+                                <div key={c.name} className={`worker-cert-tile status-${visualStatus(c.status, c.days)}`}>
                                   <div className="worker-cert-tile-head">
                                     <strong>{c.name}</strong>
-                                    <StatusPill status={c.status} />
+                                    <StatusPill status={visualStatus(c.status, c.days)} />
                                   </div>
                                   <p className="worker-cert-tile-meta">
                                     <span>{c.category}</span>

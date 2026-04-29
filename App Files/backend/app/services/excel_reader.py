@@ -105,6 +105,7 @@ class Contractor:
 class ActionItem:
     contractor: str
     worker: str
+    worker_status: str
     cert_name: str
     cert_category: str
     completed_on: Optional[date]
@@ -283,6 +284,7 @@ def _parse_workers(ws: Worksheet, _issues: list[str]) -> list[Worker]:
 
 def _parse_tracker_headers(
     ws: Worksheet,
+    ws_formula: Worksheet,
     certs_lookup_by_row: dict[int, str],
     issues: list[str],
 ) -> list[tuple[int, str]]:
@@ -295,6 +297,9 @@ def _parse_tracker_headers(
     headers: list[tuple[int, str]] = []
     for c in range(3, ws.max_column + 1):
         value = ws.cell(2, c).value
+        formula_value = ws_formula.cell(2, c).value
+        if value in (None, "") and isinstance(formula_value, str):
+            value = formula_value
         if value is None or value == "":
             continue
         if isinstance(value, str):
@@ -412,13 +417,12 @@ def _aggregate_contractor_counts(contractor: Contractor, contractor_workers: lis
 def _build_action_list(workers: list[Worker]) -> list[ActionItem]:
     items: list[ActionItem] = []
     for w in workers:
-        if w.status not in ("active", "onboarding"):
-            continue
         for cs in w.certs:
             if cs.status in ("red", "yellow") and cs.completed_on is not None:
                 items.append(ActionItem(
                     contractor=w.contractor,
                     worker=w.name,
+                    worker_status=w.status,
                     cert_name=cs.cert_name,
                     cert_category=cs.cert_category,
                     completed_on=cs.completed_on,
@@ -526,6 +530,7 @@ def read_workbook(path: Path, today: Optional[date] = None) -> ParsedWorkbook:
 
     try:
         wb = load_workbook(path, data_only=True, read_only=False)
+        wb_formula = load_workbook(path, data_only=False, read_only=False)
     except PermissionError as exc:
         raise PermissionError(f"Workbook is locked (open in Excel): {path}") from exc
 
@@ -537,6 +542,7 @@ def read_workbook(path: Path, today: Optional[date] = None) -> ParsedWorkbook:
     ws_contractors = wb[CONTRACTORS_SHEET]
     ws_workers = wb[WORKERS_SHEET]
     ws_tracker = wb[TRACKER_SHEET]
+    ws_tracker_formula = wb_formula[TRACKER_SHEET]
 
     # Lookup for resolving =Certifications!A{n} formulas in Tracker headers.
     certs_lookup_by_row: dict[int, str] = {}
@@ -552,7 +558,7 @@ def read_workbook(path: Path, today: Optional[date] = None) -> ParsedWorkbook:
     worker_lookup: dict[str, Worker] = {_normalize(w.name): w for w in workers}
     certs_by_name: dict[str, Cert] = {_normalize(c.name): c for c in certs}
 
-    headers = _parse_tracker_headers(ws_tracker, certs_lookup_by_row, issues)
+    headers = _parse_tracker_headers(ws_tracker, ws_tracker_formula, certs_lookup_by_row, issues)
     _parse_tracker_data(ws_tracker, headers, worker_lookup, today, certs_by_name, issues)
 
     for w in workers:

@@ -1,10 +1,10 @@
 // Two reusable status visualizations:
-//   - StatusPill: a colored badge ("Current", "Renew soon", "Urgent", "Missing")
+//   - StatusPill: a colored badge ("Current", "Renew soon", "Urgent", "Overdue", "Missing")
 //   - StatusStackedBar: a horizontal bar showing the cert-status mix at a glance
-import type { ExcelStatus } from '../types'
+import type { ExcelVisualStatus } from '../types'
 import { statusLabel } from '../lib/format'
 
-export function StatusPill({ status }: { status: ExcelStatus }) {
+export function StatusPill({ status }: { status: ExcelVisualStatus }) {
   return <span className={`status-pill status-${status}`}>{statusLabel(status)}</span>
 }
 

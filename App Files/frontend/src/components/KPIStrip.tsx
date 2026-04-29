@@ -1,6 +1,6 @@
 // Four-card row at the top of the Overview page: workers, compliance %,
-// urgent count, and expiring-soon count. Tone (good/warn/bad) reacts to the
-// numbers so the eye is drawn to anything red.
+// action count, and expiring-soon count. Tone (good/warn/bad) reacts to the
+// numbers so the eye is drawn to anything needing attention.
 import { AlertTriangle, Clock, ShieldCheck, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -47,9 +47,9 @@ export function KPIStrip({ kpis }: { kpis: ExcelKPIs }) {
       />
       <KPICard
         icon={<AlertTriangle size={20} />}
-        label="Urgent (≤30d or past)"
+        label="Needs action"
         value={kpis.red_count}
-        sub="Schedule renewal now"
+        sub="Urgent or overdue"
         tone={kpis.red_count > 0 ? 'tone-bad' : 'tone-good'}
       />
       <KPICard

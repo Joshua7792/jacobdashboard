@@ -6,6 +6,7 @@
 // the Python side, mirror it here so the frontend can use it.
 
 export type ExcelStatus = 'green' | 'yellow' | 'red' | 'blank'
+export type ExcelVisualStatus = ExcelStatus | 'orange'
 
 export type ExcelKPIs = {
   total_contractors: number
@@ -64,6 +65,7 @@ export type ExcelContractor = {
 export type ExcelActionItem = {
   contractor: string
   worker: string
+  worker_status: string
   cert_name: string
   cert_category: string
   completed_on: string | null

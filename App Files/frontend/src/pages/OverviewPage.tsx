@@ -18,7 +18,7 @@ import { KPIStrip } from '../components/KPIStrip'
 import { PageShell } from '../components/PageShell'
 import { StatusPill, StatusStackedBar } from '../components/StatusPill'
 import { useDashboard } from '../context/DashboardContext'
-import { STATUS_COLOR, formatDate, relativeDays } from '../lib/format'
+import { STATUS_COLOR, formatDate, relativeDays, visualStatus } from '../lib/format'
 
 export function OverviewPage() {
   const { data } = useDashboard()
@@ -30,7 +30,7 @@ export function OverviewPage() {
   const donutData = [
     { name: 'Current', value: kpis.green_count, key: 'green' as const },
     { name: 'Renew soon', value: kpis.yellow_count, key: 'yellow' as const },
-    { name: 'Urgent', value: kpis.red_count, key: 'red' as const },
+    { name: 'Needs action', value: kpis.red_count, key: 'red' as const },
     { name: 'Missing', value: kpis.blank_count, key: 'blank' as const },
   ].filter((d) => d.value > 0)
   const donutTotal = donutData.reduce((sum, d) => sum + d.value, 0)
@@ -144,11 +144,11 @@ export function OverviewPage() {
       </div>
 
       <div className="overview-row-2">
-        {/* Top urgent items snapshot */}
+        {/* Top action items snapshot */}
         <section className="surface card-padded">
           <header className="excel-section-head">
             <div>
-              <p className="eyebrow">Top urgent</p>
+              <p className="eyebrow">Top action items</p>
               <h3>Five items closest to deadline</h3>
             </div>
             <Link to="/actions" className="link-arrow">
@@ -161,7 +161,7 @@ export function OverviewPage() {
             <ul className="overview-action-list">
               {topActions.map((item, idx) => (
                 <li key={`${item.worker}-${item.cert_name}-${idx}`}>
-                  <StatusPill status={item.status} />
+                  <StatusPill status={visualStatus(item.status, item.days_until_anniversary)} />
                   <div className="overview-action-text">
                     <strong>{item.worker}</strong>
                     <span>{item.contractor}</span>
