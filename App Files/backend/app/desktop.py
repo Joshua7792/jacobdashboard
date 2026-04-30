@@ -66,12 +66,33 @@ def main() -> None:
     api_thread.start()
     wait_for_api(port)
 
-    webview.create_window(
+    window = webview.create_window(
         "Cordillera Workforce Dashboard",
         f"http://127.0.0.1:{port}",
         min_size=(1200, 780),
         text_select=True,
+        fullscreen=True,
     )
+
+    # F11 toggles fullscreen so the user can drop back to a normal window
+    # (and reach the OS close button) without killing the process.
+    def toggle_fullscreen() -> None:
+        window.toggle_fullscreen()
+
+    def bind_keys() -> None:
+        window.evaluate_js(
+            """
+            document.addEventListener('keydown', (e) => {
+              if (e.key === 'F11') {
+                e.preventDefault();
+                window.pywebview.api.toggle_fullscreen();
+              }
+            });
+            """
+        )
+
+    window.expose(toggle_fullscreen)
+    window.events.loaded += bind_keys
     webview.start()
 
 
