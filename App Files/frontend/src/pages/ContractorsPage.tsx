@@ -76,10 +76,10 @@ export function ContractorsPage() {
                     <p className="eyebrow">{c.specialty ?? t('contractors.default_specialty')}</p>
                     <h3>{c.name}</h3>
                   </div>
-                  <div className="contractor-card-pct">
+                  {/* <div className="contractor-card-pct">
                     <Icon size={14} />
                     <span>{c.compliance_pct.toFixed(1)}%</span>
-                  </div>
+                  </div> */}
                 </header>
 
                 <div className="contractor-card-counts">

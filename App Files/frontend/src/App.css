@@ -2536,3 +2536,15 @@ body {
 [data-theme="dark"] .status-stacked-bar {
   background: rgba(148, 163, 184, 0.20);
 }
+
+/* [data-theme='dark'] .table-pagination {
+  background: rgba(15, 23, 42, 0.78);
+} */
+
+/* [data-theme="dark"] .contractor-contact {
+  color: #f0f1f3;
+}
+
+[data-theme="dark"] .contractor-notes {
+  color: #f0f1f3;
+} */
